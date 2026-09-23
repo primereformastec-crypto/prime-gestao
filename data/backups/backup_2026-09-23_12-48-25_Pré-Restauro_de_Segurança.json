@@ -1,0 +1,37 @@
+{
+  "isBackupEnvelope": true,
+  "backupId": "bck_1790160505621",
+  "backupTag": "Pré-Restauro de Segurança",
+  "createdAt": "2026-09-23T10:48:25.621Z",
+  "counts": {
+    "leads": 0,
+    "clients": 0,
+    "projects": 0,
+    "employees": 0,
+    "invoices": 0,
+    "expenses": 0,
+    "materials": 0,
+    "shifts": 0
+  },
+  "data": {
+    "isCleanMode": true,
+    "leads": [],
+    "clients": [],
+    "projects": [],
+    "stages": [],
+    "employees": [],
+    "shifts": [],
+    "materials": [],
+    "expenses": [],
+    "fixedExpenses": [],
+    "invoices": [],
+    "payments": [],
+    "milestones": [],
+    "changeOrders": [],
+    "dailyLogs": [],
+    "photos": [],
+    "documents": [],
+    "isInitialized": true,
+    "lastUpdated": "2026-09-23T10:46:06.162Z"
+  }
+}
