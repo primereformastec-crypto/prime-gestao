@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Lead, LeadStatus, Project } from '../../types';
+import { Lead, LeadStatus, Project, ProjectStatus } from '../../types';
 import { LeadDetailModal } from './LeadDetailModal';
 import { MetaLeadImporter } from '../importer/MetaLeadImporter';
 import { 
@@ -8,7 +8,8 @@ import {
   Euro, User, AlertCircle, CheckCircle2, 
   Filter, Sparkles, ArrowRight, LayoutGrid, List,
   UploadCloud, MessageSquare, Trash2, Building2,
-  Check, X, ShieldAlert, AlertTriangle
+  Check, X, ShieldAlert, AlertTriangle, ChevronRight, ChevronLeft,
+  Wrench, CheckCheck
 } from 'lucide-react';
 
 export const LegacyLeadsPipeline: React.FC = () => {
@@ -17,6 +18,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
     projects, 
     clients, 
     moveLeadStatus, 
+    updateLead,
     deleteLead, 
     convertLeadToProjectAndClient, 
     selectedLeadId, 
@@ -31,9 +33,31 @@ export const LegacyLeadsPipeline: React.FC = () => {
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
 
-  // Conversion / Duplicate Prevention Modal
+  // Conversion / Duplicate Prevention Modal State
   const [leadToConvert, setLeadToConvert] = useState<Lead | null>(null);
   const [matchingExistingProject, setMatchingExistingProject] = useState<Project | null>(null);
+  const [convertStatus, setConvertStatus] = useState<ProjectStatus>('concluida');
+  const [convertService, setConvertService] = useState('');
+  const [convertContractValue, setConvertContractValue] = useState<number>(0);
+  const [convertNotes, setConvertNotes] = useState('');
+
+  // Auto-correction for leads with default 'Lisboa' or fake '18000'
+  useEffect(() => {
+    leads.forEach(l => {
+      if (l.isLegacy) {
+        const updates: Partial<Lead> = {};
+        if (l.city && (l.city.includes('Lisboa') || l.city.includes('Vale do Tejo'))) {
+          updates.city = 'Barcelona';
+        }
+        if (l.estimatedValue === 18000) {
+          updates.estimatedValue = 0;
+        }
+        if (Object.keys(updates).length > 0) {
+          updateLead(l.id, updates);
+        }
+      }
+    });
+  }, [leads.length]);
 
   // 10 commercial columns customized for historical Meta Ads triage
   const columns: { id: LeadStatus; title: string; color: string; headerBg: string; badgeColor: string }[] = [
@@ -82,7 +106,6 @@ export const LegacyLeadsPipeline: React.FC = () => {
     if (!draggedLeadId) return;
 
     if (status === 'vendido') {
-      // Trigger conversion with duplicate check
       const lead = leads.find(l => l.id === draggedLeadId);
       if (lead) {
         checkAndOpenConversionModal(lead);
@@ -93,8 +116,22 @@ export const LegacyLeadsPipeline: React.FC = () => {
     setDraggedLeadId(null);
   };
 
+  // Step advancement helper (Click instead of drag)
+  const handleMoveStep = (lead: Lead, direction: 'prev' | 'next') => {
+    const colIndex = columns.findIndex(c => c.id === lead.status);
+    if (direction === 'prev' && colIndex > 0) {
+      moveLeadStatus(lead.id, columns[colIndex - 1].id);
+    } else if (direction === 'next' && colIndex < columns.length - 1) {
+      const nextCol = columns[colIndex + 1];
+      if (nextCol.id === 'vendido') {
+        checkAndOpenConversionModal(lead);
+      } else {
+        moveLeadStatus(lead.id, nextCol.id);
+      }
+    }
+  };
+
   const checkAndOpenConversionModal = (lead: Lead) => {
-    // Check if an existing project or client already matches
     const cleanP = lead.phone.replace(/[^\d]/g, '');
     const matchedClient = clients.find(c => {
       const cPhone = c.phone.replace(/[^\d]/g, '');
@@ -115,14 +152,23 @@ export const LegacyLeadsPipeline: React.FC = () => {
 
     setLeadToConvert(lead);
     setMatchingExistingProject(matchedProj);
+    setConvertService(lead.service || 'Reforma Geral');
+    setConvertContractValue(lead.estimatedValue || 0);
+    setConvertStatus('concluida'); // Default to completed historical work as requested
+    setConvertNotes(lead.notes || '');
   };
 
   const handleConfirmConvertNewProject = () => {
     if (!leadToConvert) return;
-    const { project } = convertLeadToProjectAndClient(leadToConvert.id);
+    const { project } = convertLeadToProjectAndClient(leadToConvert.id, {
+      status: convertStatus,
+      serviceType: convertService.trim() || leadToConvert.service,
+      contractValue: Number(convertContractValue) || 0,
+      notes: convertNotes
+    });
     setLeadToConvert(null);
     setMatchingExistingProject(null);
-    if (confirm(`✓ Sucesso! Obra ${project.id} criada. Deseja abrir a página da obra agora?`)) {
+    if (confirm(`✓ Sucesso! Obra ${project.id} (${project.status === 'concluida' ? 'Concluída/Histórico' : 'Em Execução'}) criada. Deseja abrir a página da obra agora?`)) {
       setSelectedProjectId(project.id);
       setActiveTab('obras');
     }
@@ -150,12 +196,16 @@ export const LegacyLeadsPipeline: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
               Histórico Meta Ads
             </span>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-              Pipeline de Leads Antigos (Triagem Alexandre)
-            </h1>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-amber-600" />
+              <span>Barcelona & Área Metropolitana</span>
+            </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Espaço de triagem dos 11 Excels do Meta. O Alexandre move os leads para a coluna certa; quem não for contactado fica sinalizado para as meninas ligarem.
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+            Pipeline de Leads Antigos (Triagem Alexandre)
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Triagem rápida com botões de avanço ◀ ▶ nos cards. Quem não for contactado fica na 1ª coluna para as meninas ligarem.
           </p>
         </div>
 
@@ -163,7 +213,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setShowImporter(!showImporter)}
-            className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
+            className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-2xs"
           >
             <UploadCloud className="w-4 h-4 text-blue-600" />
             <span>{showImporter ? 'Fechar Importador' : 'Carregar os 11 Excels'}</span>
@@ -205,12 +255,12 @@ export const LegacyLeadsPipeline: React.FC = () => {
           <span className="text-[11px] text-slate-500 font-semibold block">Por Contactar (Meninas)</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-blue-600">{uncontactedCount}</span>
-            <span className="text-[10px] text-slate-400">leads na 1ª coluna</span>
+            <span className="text-[10px] text-slate-400">na 1ª coluna</span>
           </div>
         </div>
 
         <div className="prime-card p-4 border-l-4 border-l-amber-500">
-          <span className="text-[11px] text-slate-500 font-semibold block">Em Negociação / Visita</span>
+          <span className="text-[11px] text-slate-500 font-semibold block">Em Negociação / Conversa</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-amber-600">{inProgressCount}</span>
             <span className="text-[10px] text-slate-400">conversas ativas</span>
@@ -279,7 +329,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
           <div>
             <h3 className="font-bold text-slate-800 text-base">Ainda não importou os 11 ficheiros do Meta Ads</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-              Carregue os ficheiros Excel para que o Alexandre possa triar os leads e as meninas realizarem os contactos.
+              Carregue os ficheiros Excel de Barcelona para que o Alexandre possa triar os leads e as meninas realizarem os contactos.
             </p>
           </div>
           <button
@@ -295,7 +345,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
       {/* KANBAN VIEW */}
       {viewMode === 'kanban' && legacyLeads.length > 0 && (
         <div className="flex gap-4 overflow-x-auto pb-6 select-none min-h-[650px]">
-          {columns.map(col => {
+          {columns.map((col, colIdx) => {
             const colLeads = filteredLeads.filter(l => l.status === col.id);
 
             return (
@@ -303,7 +353,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
                 key={col.id}
                 onDragOver={handleDragOver}
                 onDrop={e => handleDrop(e, col.id)}
-                className="w-72 shrink-0 flex flex-col bg-slate-50/80 rounded-2xl border border-slate-200/90 overflow-hidden"
+                className="w-80 shrink-0 flex flex-col bg-slate-50/80 rounded-2xl border border-slate-200/90 overflow-hidden"
               >
                 {/* Column Header */}
                 <div className={`p-3.5 border-b border-slate-200/80 ${col.headerBg} flex items-center justify-between`}>
@@ -317,99 +367,143 @@ export const LegacyLeadsPipeline: React.FC = () => {
 
                 {/* Cards Container */}
                 <div className="p-3 space-y-3 flex-1 overflow-y-auto max-h-[750px]">
-                  {colLeads.map(lead => (
-                    <div
-                      key={lead.id}
-                      draggable
-                      onDragStart={() => handleDragStart(lead.id)}
-                      className="prime-card p-3.5 space-y-2.5 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group relative border-l-3 border-l-blue-500"
-                    >
-                      {/* Top info */}
-                      <div className="flex items-start justify-between gap-1">
-                        <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                          {lead.id}
-                        </span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => deleteLead(lead.id)}
-                            className="text-slate-300 hover:text-rose-500 p-1"
-                            title="Excluir Lead"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
+                  {colLeads.map(lead => {
+                    const hasPrev = colIdx > 0;
+                    const hasNext = colIdx < columns.length - 1;
 
-                      {/* Lead Name */}
-                      <h4 
-                        onClick={() => setSelectedLeadId(lead.id)}
-                        className="font-bold text-slate-900 text-xs hover:text-blue-600 transition-colors cursor-pointer"
+                    return (
+                      <div
+                        key={lead.id}
+                        draggable
+                        onDragStart={() => handleDragStart(lead.id)}
+                        className="prime-card p-3.5 space-y-2.5 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group relative border-l-3 border-l-blue-500 bg-white"
                       >
-                        {lead.name}
-                      </h4>
+                        {/* Top ID & Delete button */}
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {lead.id}
+                          </span>
 
-                      {/* Service & City */}
-                      <div className="text-[11px] text-slate-600 space-y-1">
-                        <p className="font-medium text-slate-800 line-clamp-1">
-                          🛠️ {lead.service}
-                        </p>
-                        <p className="flex items-center gap-1 text-slate-400">
-                          <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
-                          <span className="truncate">{lead.city}</span>
-                        </p>
-                      </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => deleteLead(lead.id)}
+                              className="text-slate-300 hover:text-rose-500 p-1"
+                              title="Excluir Lead"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
 
-                      {/* Campaign Tag */}
-                      {lead.campaignName && (
-                        <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md block truncate">
-                          🎯 {lead.campaignName}
-                        </span>
-                      )}
+                        {/* Lead Name */}
+                        <h4 
+                          onClick={() => setSelectedLeadId(lead.id)}
+                          className="font-bold text-slate-900 text-sm hover:text-blue-600 transition-colors cursor-pointer leading-tight"
+                        >
+                          {lead.name}
+                        </h4>
 
-                      {/* Quick Contact & Action Buttons */}
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5">
-                          {lead.phone && lead.phone !== 'Sem Telefone' && (
-                            <>
-                              <a
-                                href={`https://wa.me/${lead.phone.replace(/[^\d]/g, '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-[10px] font-bold flex items-center gap-1"
-                                title="Abrir WhatsApp"
+                        {/* Phone Number - PROMINENT AT TOP */}
+                        {lead.phone && lead.phone !== 'Sem Telefone' ? (
+                          <div className="flex items-center justify-between bg-blue-50/70 p-2 rounded-xl border border-blue-100">
+                            <div className="flex items-center gap-1.5 font-mono font-bold text-xs text-blue-950">
+                              <Phone className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <span>{lead.phone}</span>
+                            </div>
+
+                            <a
+                              href={`https://wa.me/${lead.phone.replace(/[^\d]/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all"
+                              title="WhatsApp Imediato"
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              <span>WhatsApp</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Sem contacto telefónico</span>
+                        )}
+
+                        {/* Service & City */}
+                        <div className="text-[11px] text-slate-600 space-y-1">
+                          <p className="font-semibold text-slate-800 line-clamp-2">
+                            🛠️ {lead.service}
+                          </p>
+                          <p className="flex items-center gap-1 text-slate-500">
+                            <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span className="truncate">{lead.city || 'Barcelona'}</span>
+                          </p>
+                        </div>
+
+                        {/* Campaign and Budget Badge */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {lead.campaignName && (
+                            <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md truncate max-w-[170px]" title={lead.campaignName}>
+                              🎯 {lead.campaignName}
+                            </span>
+                          )}
+
+                          {lead.estimatedValue && lead.estimatedValue > 0 ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                              € {lead.estimatedValue.toLocaleString('pt-PT')}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* 1-CLICK STEP ADVANCEMENT BUTTONS (◀ VOLTAR | AVANÇAR ▶) */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-1.5">
+                          {hasPrev ? (
+                            <button
+                              type="button"
+                              onClick={() => handleMoveStep(lead, 'prev')}
+                              className="p-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+                              title={`Mover para: ${columns[colIdx - 1]?.title}`}
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                              <span>Voltar</span>
+                            </button>
+                          ) : <div />}
+
+                          {lead.status !== 'vendido' ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => checkAndOpenConversionModal(lead)}
+                                className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs"
+                                title="Converter em Obra Oficial"
                               >
-                                <MessageSquare className="w-3 h-3" />
-                                <span>WhatsApp</span>
-                              </a>
+                                <Building2 className="w-3 h-3" />
+                                <span>Virou Obra</span>
+                              </button>
 
-                              <a
-                                href={`tel:${lead.phone}`}
-                                className="p-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-[10px] font-bold"
-                                title="Ligar"
-                              >
-                                <Phone className="w-3 h-3" />
-                              </a>
-                            </>
+                              {hasNext && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveStep(lead, 'next')}
+                                  className="p-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                                  title={`Avançar para: ${columns[colIdx + 1]?.title}`}
+                                >
+                                  <span>Avançar</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md flex items-center gap-1">
+                              <CheckCheck className="w-3 h-3" />
+                              <span>Vendido</span>
+                            </span>
                           )}
                         </div>
-
-                        {lead.status !== 'vendido' && (
-                          <button
-                            onClick={() => checkAndOpenConversionModal(lead)}
-                            className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs"
-                            title="Converter diretamente em Obra"
-                          >
-                            <Building2 className="w-3 h-3" />
-                            <span>Vender</span>
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {colLeads.length === 0 && (
-                    <div className="h-32 border border-dashed border-slate-200 rounded-xl flex items-center justify-center text-[11px] text-slate-400">
-                      Arraste para aqui
+                    <div className="h-28 border border-dashed border-slate-200 rounded-xl flex items-center justify-center text-[11px] text-slate-400">
+                      Sem leads nesta etapa
                     </div>
                   )}
                 </div>
@@ -428,7 +522,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
                 <tr>
                   <th className="p-3">ID / Data</th>
                   <th className="p-3">Nome</th>
-                  <th className="p-3">Telemóvel</th>
+                  <th className="p-3">Telemóvel (WhatsApp)</th>
                   <th className="p-3">Cidade</th>
                   <th className="p-3">Serviço / Reforma</th>
                   <th className="p-3">Campanha Meta</th>
@@ -451,8 +545,23 @@ export const LegacyLeadsPipeline: React.FC = () => {
                         {lead.name}
                       </span>
                     </td>
-                    <td className="p-3 font-mono text-slate-700">{lead.phone}</td>
-                    <td className="p-3 text-slate-600">{lead.city}</td>
+                    <td className="p-3 font-mono font-bold text-blue-900">
+                      <div className="flex items-center gap-2">
+                        <span>{lead.phone}</span>
+                        {lead.phone && (
+                          <a
+                            href={`https://wa.me/${lead.phone.replace(/[^\d]/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded"
+                            title="WhatsApp"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3 text-slate-600">{lead.city || 'Barcelona'}</td>
                     <td className="p-3 text-slate-700 font-medium">{lead.service}</td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-semibold truncate max-w-[150px] block">
@@ -479,17 +588,13 @@ export const LegacyLeadsPipeline: React.FC = () => {
                     </td>
                     <td className="p-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {lead.phone && (
-                          <a
-                            href={`https://wa.me/${lead.phone.replace(/[^\d]/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs"
-                            title="WhatsApp"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                          </a>
-                        )}
+                        <button
+                          onClick={() => checkAndOpenConversionModal(lead)}
+                          className="px-2 py-1 bg-emerald-600 text-white rounded text-[11px] font-bold"
+                          title="Virou Obra"
+                        >
+                          Virou Obra
+                        </button>
                         <button
                           onClick={() => deleteLead(lead.id)}
                           className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg text-xs"
@@ -507,7 +612,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Converter para Obra & Detetor de Duplicados */}
+      {/* MODAL: Converter para Obra (Personalizável: Já Feita/Paga, Em Execução ou Agendada) */}
       {leadToConvert && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
@@ -551,19 +656,78 @@ export const LegacyLeadsPipeline: React.FC = () => {
                     Para não duplicar obras, escolha uma das opções abaixo:
                   </p>
                 </div>
-              ) : (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <p className="font-bold text-slate-800">Detalhes do Lead a Converter:</p>
-                  <p className="text-slate-600">Cliente: <strong>{leadToConvert.name}</strong></p>
-                  <p className="text-slate-600">Telemóvel: <strong>{leadToConvert.phone}</strong></p>
-                  <p className="text-slate-600">Serviço: <strong>{leadToConvert.service}</strong> ({leadToConvert.city})</p>
-                  <p className="text-slate-600">Origem: <strong>{leadToConvert.campaignName || 'Meta Ads'}</strong></p>
-                </div>
-              )}
+              ) : null}
 
-              <p className="text-slate-500">
-                Ao criar uma nova obra, o sistema gera automaticamente o registo de Cliente, o código da Obra (`OB-XXXX`), as etapas padrão e os marcos de faturação.
-              </p>
+              {/* Form Options for Project Creation */}
+              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Estado Atual da Obra:
+                  </label>
+                  <select
+                    value={convertStatus}
+                    onChange={e => setConvertStatus(e.target.value as ProjectStatus)}
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
+                  >
+                    <option value="concluida">✅ Já foi Entregue e Paga (Histórico Concluído)</option>
+                    <option value="em_execucao">⚡ Em Execução Atualmente (Obra Ativa)</option>
+                    <option value="agendada">📅 Agendada para o Futuro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Tipo de Serviço / Título da Obra:
+                  </label>
+                  <input
+                    type="text"
+                    value={convertService}
+                    onChange={e => setConvertService(e.target.value)}
+                    placeholder="Ex: Instalação de Ar Condicionado, Reforma de Banheiro..."
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Valor Real do Contrato (€):
+                    </label>
+                    <input
+                      type="number"
+                      value={convertContractValue || ''}
+                      onChange={e => setConvertContractValue(Number(e.target.value))}
+                      placeholder="0 se não aplicável"
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Cidade / Local:
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={leadToConvert.city || 'Barcelona'}
+                      className="w-full p-2 bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Notas / Histórico Adicional:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={convertNotes}
+                    onChange={e => setConvertNotes(e.target.value)}
+                    placeholder="Observações do Alexandre sobre a venda ou execução..."
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
+                  />
+                </div>
+              </div>
 
               {/* Action Buttons */}
               <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-2.5">
@@ -592,10 +756,10 @@ export const LegacyLeadsPipeline: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleConfirmConvertNewProject}
-                  className="prime-btn-primary px-5 py-2.5 font-bold flex items-center justify-center gap-1.5"
+                  className="prime-btn-primary px-5 py-2.5 font-bold flex items-center justify-center gap-1.5 shadow-md"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Criar Nova Obra Oficial</span>
+                  <span>Criar Obra Oficial ({convertStatus === 'concluida' ? 'Histórico' : 'Ativa'})</span>
                 </button>
               </div>
             </div>

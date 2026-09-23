@@ -62,7 +62,15 @@ interface AppContextType {
   updateLead: (id: string, updates: Partial<Lead>) => void;
   moveLeadStatus: (leadId: string, newStatus: LeadStatus) => void;
   addLeadInteraction: (leadId: string, type: any, description: string) => void;
-  convertLeadToProjectAndClient: (leadId: string) => { client: Client; project: Project };
+  convertLeadToProjectAndClient: (
+    leadId: string, 
+    customOptions?: { 
+      status?: ProjectStatus; 
+      serviceType?: string; 
+      contractValue?: number;
+      notes?: string;
+    }
+  ) => { client: Client; project: Project };
 
   addClient: (client: Omit<Client, 'id' | 'createdAt'>) => Client;
   updateClient: (id: string, updates: Partial<Client>) => void;
@@ -704,9 +712,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const convertLeadToProjectAndClient = (leadId: string) => {
+  const convertLeadToProjectAndClient = (
+    leadId: string,
+    customOptions?: { 
+      status?: ProjectStatus; 
+      serviceType?: string; 
+      contractValue?: number;
+      notes?: string;
+    }
+  ) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) throw new Error('Lead não encontrado');
+
+    const effectiveCity = (!lead.city || lead.city.includes('Lisboa')) ? 'Barcelona' : lead.city;
 
     // 1. Create or match Client
     let client = clients.find(c => c.email.toLowerCase() === lead.email.toLowerCase() || c.phone === lead.phone);
@@ -718,8 +736,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name: lead.name,
         phone: lead.phone,
         email: lead.email,
-        address: lead.address || lead.city,
-        city: lead.city,
+        address: lead.address || effectiveCity,
+        city: effectiveCity,
         createdAt: new Date().toISOString().slice(0, 10),
         notes: `Convertido do Lead ${lead.id}`
       };
@@ -730,7 +748,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. Create Project
     const projectCount = projects.length + 1;
     const projectId = `OB-${String(projectCount).padStart(4, '0')}`;
-    const projectValue = lead.finalValue || lead.estimatedValue || 25000;
+    const projectValue = customOptions?.contractValue !== undefined 
+      ? customOptions.contractValue 
+      : (lead.finalValue || lead.estimatedValue || 0);
+    const serviceType = customOptions?.serviceType || lead.service || 'Reforma Geral';
+    const status = customOptions?.status || 'em_execucao';
+    const isCompleted = status === 'concluida';
+    const progressPercent = isCompleted ? 100 : 0;
     
     const today = new Date().toISOString().slice(0, 10);
     const plannedEnd = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -738,17 +762,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const project: Project = {
       id: projectId,
       clientId: client.id,
-      title: `${lead.service} - ${lead.name}`,
-      serviceType: lead.service,
-      address: lead.address || `${lead.city}`,
-      city: lead.city,
+      title: `${serviceType} - ${lead.name}`,
+      serviceType,
+      address: lead.address || effectiveCity,
+      city: effectiveCity,
       managerId: 'Ricardo Silva',
       startDate: today,
       plannedEndDate: plannedEnd,
+      actualEndDate: isCompleted ? today : undefined,
       contractValue: projectValue,
-      status: 'em_execucao',
-      progressPercent: 0,
-      notes: `Obra gerada automaticamente pela vitória do ${lead.id}. ${lead.notes || ''}`,
+      status,
+      progressPercent,
+      notes: customOptions?.notes || `Obra gerada automaticamente pela vitória do ${lead.id}. ${lead.notes || ''}`,
       createdAt: today
     };
 
@@ -766,16 +791,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         plannedStart: today,
         plannedEnd: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         durationDays: 10,
-        status: 'em_execucao',
-        progressPercent: 0,
+        status: isCompleted ? 'concluida' : 'em_execucao',
+        progressPercent: isCompleted ? 100 : 0,
         delayDays: 0,
         isMilestone: true,
         triggersBilling: true,
         billingAmount: projectValue * 0.3,
         subtasks: [
-          { id: `st-1`, name: 'Proteção de áreas comuns e elevadores', completed: false },
-          { id: `st-2`, name: 'Demolição de alvenarias e revestimentos', completed: false },
-          { id: `st-3`, name: 'Retirada e transporte de entulho', completed: false }
+          { id: `st-1`, name: 'Proteção de áreas comuns e elevadores', completed: isCompleted },
+          { id: `st-2`, name: 'Demolição de alvenarias e revestimentos', completed: isCompleted },
+          { id: `st-3`, name: 'Retirada e transporte de entulho', completed: isCompleted }
         ]
       },
       {
@@ -788,15 +813,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         plannedStart: new Date(Date.now() + 11 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         plannedEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         durationDays: 19,
-        status: 'nao_iniciada',
-        progressPercent: 0,
+        status: isCompleted ? 'concluida' : 'nao_iniciada',
+        progressPercent: isCompleted ? 100 : 0,
         delayDays: 0,
         isMilestone: true,
         triggersBilling: true,
         billingAmount: projectValue * 0.3,
         subtasks: [
-          { id: `st-4`, name: 'Passagem de prumadas e tubagens', completed: false },
-          { id: `st-5`, name: 'Instalação de quadro elétrico e caixas de derivação', completed: false }
+          { id: `st-4`, name: 'Passagem de prumadas e tubagens', completed: isCompleted },
+          { id: `st-5`, name: 'Instalação de quadro elétrico e caixas de derivação', completed: isCompleted }
         ]
       },
       {
@@ -809,16 +834,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         plannedStart: new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         plannedEnd: plannedEnd,
         durationDays: 29,
-        status: 'nao_iniciada',
-        progressPercent: 0,
+        status: isCompleted ? 'concluida' : 'nao_iniciada',
+        progressPercent: isCompleted ? 100 : 0,
         delayDays: 0,
         isMilestone: true,
         triggersBilling: true,
         billingAmount: projectValue * 0.4,
         subtasks: [
-          { id: `st-6`, name: 'Assentamento de cerâmicas e chão', completed: false },
-          { id: `st-7`, name: 'Pintura geral e acabamentos', completed: false },
-          { id: `st-8`, name: 'Limpeza de fim de obra e entrega', completed: false }
+          { id: `st-6`, name: 'Assentamento de cerâmicas e chão', completed: isCompleted },
+          { id: `st-7`, name: 'Pintura geral e acabamentos', completed: isCompleted },
+          { id: `st-8`, name: 'Limpeza de fim de obra e entrega', completed: isCompleted }
         ]
       }
     ];

@@ -39,14 +39,16 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
   const [selectedCampaignFilter, setSelectedCampaignFilter] = useState('all');
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
 
-  // Normalize phone helper
+  // Normalize phone helper for Spain (+34) and international
   const cleanPhone = (raw: any): string => {
     if (!raw) return '';
     let str = String(raw).replace(/[^\d+]/g, '');
     if (str.startsWith('00')) str = '+' + str.substring(2);
-    // If 9 digits starting with 9, assume Portugal (+351)
-    if (str.length === 9 && str.startsWith('9')) {
-      str = '+351 ' + str;
+    // If 9 digits (standard Spanish 6xx, 7xx, 8xx, 9xx), add +34
+    if (str.length === 9) {
+      str = '+34 ' + str;
+    } else if (str.startsWith('34') && str.length === 11) {
+      str = '+34 ' + str.substring(2);
     }
     return str;
   };
@@ -127,12 +129,20 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
             const campaignName = (findVal(['campaignname', 'campanha', 'campaign']) || file.name.replace(/\.[^/.]+$/, "")).toString();
             const adName = (findVal(['adname', 'anuncio', 'ad']) || '').toString();
 
-            // 6. City / Address
-            const city = (findVal(['city', 'cidade', 'localidade', 'concelho']) || 'Lisboa e Vale do Tejo').toString();
-            const address = (findVal(['street', 'rua', 'morada', 'address', 'endereco']) || '').toString();
+            // 6. City / Address (Default Barcelona, Spain)
+            const city = (findVal(['city', 'cidade', 'ciudad', 'localidad', 'municipio', 'poblacion', 'provincia', 'concelho']) || 'Barcelona').toString();
+            const address = (findVal(['street', 'rua', 'morada', 'address', 'direccion', 'endereco']) || '').toString();
 
             // 7. Service / Question
-            const serviceQuestion = findVal(['reforma', 'servico', 'obra', 'tipo', 'project', 'interess']) || 'Reforma Geral / Remodelação';
+            const serviceQuestion = findVal(['reforma', 'servico', 'servicio', 'obra', 'tipo', 'project', 'interess', 'ar_condicionado', 'aire']) || 'Reforma Geral / Remodelação';
+
+            // 8. Estimated Budget (Only set if explicitly answered in form, otherwise 0)
+            const rawBudget = findVal(['presupuesto', 'orcamento', 'budget', 'valor', 'cuanto', 'faixa', 'inversion']);
+            let estimatedValue = 0;
+            if (rawBudget) {
+              const num = parseFloat(String(rawBudget).replace(/[^\d.]/g, ''));
+              if (!isNaN(num) && num > 0) estimatedValue = num;
+            }
 
             // Duplicate detection
             const phoneKey = cleanPhone(phone);
@@ -157,7 +167,7 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
               source: 'Meta Ads',
               service: String(serviceQuestion).trim(),
               salesRep: 'Alexandre (Comercial)',
-              estimatedValue: 18000,
+              estimatedValue,
               status: 'novo_lead',
               dateAdded,
               notes: `Campanha Meta: ${campaignName}${adName ? ` | Anúncio: ${adName}` : ''}`,
