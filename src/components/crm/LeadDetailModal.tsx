@@ -211,10 +211,22 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
               </div>
 
               <div>
-                <span className="text-slate-400 block mb-0.5">Valor Estimado / Fechado</span>
-                <div className="flex items-center gap-1.5 font-bold text-slate-900 text-sm">
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
-                  <span>€{(lead.finalValue || lead.estimatedValue).toLocaleString('pt-PT')}</span>
+                <label className="text-slate-600 font-bold block mb-1 flex items-center justify-between">
+                  <span>Valor do Orçamento (€)</span>
+                  <span className="text-[10px] text-blue-600 font-normal">Editável</span>
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-slate-500 text-sm">€</span>
+                  <input
+                    type="number"
+                    value={(lead.finalValue || lead.estimatedValue) || ''}
+                    onChange={e => {
+                      const num = parseFloat(e.target.value) || 0;
+                      updateLead(lead.id, { estimatedValue: num, finalValue: num });
+                    }}
+                    placeholder="0 (A definir)"
+                    className="w-full px-2.5 py-1 text-sm font-black text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
               </div>
 
@@ -231,17 +243,26 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
               </div>
             </div>
 
-            {/* Notes / Briefing */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Observações e Especificações da Reforma
-              </label>
+            {/* Notes / Customer Dossier */}
+            <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-black text-amber-900 flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-amber-600" />
+                  <span>Sobre o Cliente & Vida Pessoal (Dossiê Comercial)</span>
+                </label>
+                <span className="text-[10px] text-amber-700 font-bold bg-amber-100/90 px-2 py-0.5 rounded shadow-2xs">
+                  Salva automaticamente ao digitar
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Anote aqui tudo sobre o cliente: família, preferências, horários de contacto, dúvidas, situação do imóvel e motivos da compra para retomar o contacto com facilidade.
+              </p>
               <textarea
                 value={lead.notes || ''}
                 onChange={e => updateLead(lead.id, { notes: e.target.value })}
-                rows={3}
-                className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-sky-500 text-slate-700 bg-white"
-                placeholder="Detalhes solicitados pelo cliente..."
+                rows={5}
+                className="w-full text-xs p-3 rounded-xl border border-amber-200 focus:outline-hidden focus:ring-2 focus:ring-amber-500 text-slate-800 bg-white font-medium"
+                placeholder="Ex: Cliente tem 58 anos, mora com o marido e mãe idosa no Eixample. Reforma urgente porque a mãe não consegue entrar na banheira. Preferem ducha antiderrapante branca com barra de apoio. Melhor horário para ligar é à tarde após as 15h..."
               />
             </div>
 

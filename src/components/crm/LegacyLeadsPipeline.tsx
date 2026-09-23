@@ -230,6 +230,11 @@ export const LegacyLeadsPipeline: React.FC = () => {
   const wonCount = legacyLeads.filter(l => l.status === 'vendido').length;
   const lostCount = legacyLeads.filter(l => l.status === 'perdido').length;
 
+  const quotedLeads = legacyLeads.filter(l => l.status === 'orcamento_enviado' || l.status === 'negociacao');
+  const quotedValueTotal = quotedLeads.reduce((acc, l) => acc + (l.finalValue || l.estimatedValue || 0), 0);
+  const wonValueTotal = legacyLeads.filter(l => l.status === 'vendido').reduce((acc, l) => acc + (l.finalValue || l.estimatedValue || 0), 0);
+  const totalPipelineValue = legacyLeads.filter(l => l.status !== 'perdido').reduce((acc, l) => acc + (l.finalValue || l.estimatedValue || 0), 0);
+
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-[1700px] mx-auto">
       {/* Top Banner / Navigation */}
@@ -292,33 +297,49 @@ export const LegacyLeadsPipeline: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Triage Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="prime-card p-4 border-l-4 border-l-blue-500">
-          <span className="text-[11px] text-slate-500 font-semibold block">Por Contactar (Meninas)</span>
+      {/* KPI Triage Metrics with Monetary Values */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="prime-card p-3.5 border-l-4 border-l-blue-500">
+          <span className="text-[11px] text-slate-500 font-semibold block">1º Contacto (Meninas)</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-blue-600">{uncontactedCount}</span>
-            <span className="text-[10px] text-slate-400">na 1ª coluna</span>
+            <span className="text-[10px] text-slate-400">por falar</span>
           </div>
         </div>
 
-        <div className="prime-card p-4 border-l-4 border-l-amber-500">
-          <span className="text-[11px] text-slate-500 font-semibold block">Em Negociação / Conversa</span>
+        <div className="prime-card p-3.5 border-l-4 border-l-sky-500">
+          <span className="text-[11px] text-slate-500 font-semibold block">Em Conversa Ativa</span>
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-black text-amber-600">{inProgressCount}</span>
-            <span className="text-[10px] text-slate-400">conversas ativas</span>
+            <span className="text-2xl font-black text-sky-600">{inProgressCount}</span>
+            <span className="text-[10px] text-slate-400">em negociação</span>
           </div>
         </div>
 
-        <div className="prime-card p-4 border-l-4 border-l-emerald-500">
-          <span className="text-[11px] text-slate-500 font-semibold block">Vendidos (Viraram Obra)</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-black text-emerald-600">{wonCount}</span>
-            <span className="text-[10px] text-emerald-600 font-semibold">convertidos</span>
+        <div className="prime-card p-3.5 border-l-4 border-l-amber-500 bg-amber-50/20">
+          <span className="text-[11px] text-amber-900 font-bold block flex items-center gap-1">
+            <span>💰 Dinheiro na Mesa</span>
+          </span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-xl font-black text-amber-700">€ {quotedValueTotal.toLocaleString('pt-PT')}</span>
           </div>
+          <span className="text-[10px] text-amber-800 font-medium block mt-0.5">
+            {quotedLeads.length} orçamentos ativos
+          </span>
         </div>
 
-        <div className="prime-card p-4 border-l-4 border-l-rose-400">
+        <div className="prime-card p-3.5 border-l-4 border-l-emerald-500 bg-emerald-50/20">
+          <span className="text-[11px] text-emerald-900 font-bold block flex items-center gap-1">
+            <span>🏆 Total Vendido</span>
+          </span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-xl font-black text-emerald-600">€ {wonValueTotal.toLocaleString('pt-PT')}</span>
+          </div>
+          <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">
+            {wonCount} obras fechadas
+          </span>
+        </div>
+
+        <div className="prime-card p-3.5 border-l-4 border-l-rose-400">
           <span className="text-[11px] text-slate-500 font-semibold block">Perdidos / Não Atende</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-rose-500">{lostCount}</span>
@@ -507,6 +528,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
         <div className="flex gap-4 overflow-x-auto pb-6 select-none min-h-[650px]">
           {columns.map((col, colIdx) => {
             const colLeads = filteredLeads.filter(l => l.status === col.id);
+            const colTotalValue = colLeads.reduce((acc, l) => acc + (l.finalValue || l.estimatedValue || 0), 0);
 
             return (
               <div
@@ -517,8 +539,13 @@ export const LegacyLeadsPipeline: React.FC = () => {
               >
                 {/* Column Header */}
                 <div className={`p-3.5 border-b border-slate-200/80 ${col.headerBg} flex items-center justify-between`}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col">
                     <span className="font-bold text-xs">{col.title}</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[10px] font-mono font-bold ${colTotalValue > 0 ? 'text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded shadow-2xs' : 'text-slate-400'}`}>
+                        € {colTotalValue.toLocaleString('pt-PT')}
+                      </span>
+                    </div>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${col.badgeColor}`}>
                     {colLeads.length}
@@ -616,8 +643,59 @@ export const LegacyLeadsPipeline: React.FC = () => {
                           <span className="text-[11px] text-slate-400 italic">Sem contacto telefónico</span>
                         )}
 
-                        {/* City, Campaign and Budget Badge */}
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 pt-0.5">
+                        {/* VALOR DO ORÇAMENTO / ESTIMADO (EDITÁVEL DIRETO NO CARD) */}
+                        <div className="flex items-center justify-between bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200/80 text-xs">
+                          <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                            <Euro className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>Orçamento:</span>
+                          </span>
+
+                          <div className="flex items-center gap-1 font-bold">
+                            <span className="text-xs text-slate-400">€</span>
+                            <input
+                              type="number"
+                              placeholder="0 (A orçar)"
+                              value={(lead.finalValue || lead.estimatedValue) || ''}
+                              onChange={e => {
+                                const num = parseFloat(e.target.value) || 0;
+                                updateLead(lead.id, { estimatedValue: num, finalValue: num });
+                              }}
+                              className="w-24 px-2 py-0.5 text-xs font-black text-right text-emerald-950 bg-white rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                              title="Digite o valor deste orçamento"
+                            />
+                          </div>
+                        </div>
+
+                        {/* DOSSIÊ & OBSERVAÇÕES DO CLIENTE (HISTÓRICO DA LIGAÇÃO) */}
+                        {lead.notes ? (
+                          <div 
+                            onClick={() => setSelectedLeadId(lead.id)}
+                            className="p-2 bg-amber-50/70 hover:bg-amber-100/70 rounded-xl border border-amber-200/80 text-[11px] text-amber-900 cursor-pointer transition-colors space-y-0.5"
+                            title="Clique para ver ou adicionar notas completas deste cliente"
+                          >
+                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                              <span className="flex items-center gap-1">
+                                <MessageSquare className="w-3 h-3 text-amber-600" />
+                                <span>Notas / Dossiê:</span>
+                              </span>
+                              <span className="text-[9px] text-amber-600 font-semibold hover:underline">Ver tudo ↗</span>
+                            </div>
+                            <p className="line-clamp-2 italic font-medium text-slate-800">{lead.notes}</p>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedLeadId(lead.id)}
+                            className="w-full py-1.5 text-[10px] font-bold text-slate-400 hover:text-amber-800 hover:bg-amber-50/60 rounded-lg border border-dashed border-slate-200 flex items-center justify-center gap-1 transition-colors"
+                            title="Clique para adicionar notas sobre o cliente e ligação"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Anotar sobre o cliente / ligação</span>
+                          </button>
+                        )}
+
+                        {/* City & Campaign Badge */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 pt-0.5">
                           <span className="flex items-center gap-1 text-slate-600 font-medium">
                             <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
                             <span>{lead.city || 'Barcelona'}</span>
@@ -628,12 +706,6 @@ export const LegacyLeadsPipeline: React.FC = () => {
                               🎯 {lead.campaignName}
                             </span>
                           )}
-
-                          {lead.estimatedValue && lead.estimatedValue > 0 ? (
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                              € {lead.estimatedValue.toLocaleString('pt-PT')}
-                            </span>
-                          ) : null}
                         </div>
 
                         {/* 1-CLICK STEP ADVANCEMENT BUTTONS (◀ VOLTAR | AVANÇAR ▶) */}
