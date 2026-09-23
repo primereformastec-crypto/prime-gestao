@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Lead, LeadStatus, Project, ProjectStatus } from '../../types';
 import { LeadDetailModal } from './LeadDetailModal';
 import { MetaLeadImporter } from '../importer/MetaLeadImporter';
+import { detectLeadInterest, getInterestBadge, STANDARD_INTERESTS } from '../../utils/interestDetector';
 import { 
   Plus, Search, Phone, MapPin, Calendar, Clock, 
   Euro, User, AlertCircle, CheckCircle2, 
@@ -18,7 +19,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
     projects, 
     clients, 
     moveLeadStatus, 
-    updateLead,
+    updateLead, 
     deleteLead, 
     convertLeadToProjectAndClient, 
     selectedLeadId, 
@@ -30,6 +31,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCampaign, setSelectedCampaign] = useState('all');
+  const [selectedInterestFilter, setSelectedInterestFilter] = useState<string>('all');
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
 
@@ -41,10 +43,10 @@ export const LegacyLeadsPipeline: React.FC = () => {
   const [convertContractValue, setConvertContractValue] = useState<number>(0);
   const [convertNotes, setConvertNotes] = useState('');
 
-  // Auto-correction for leads with default 'Lisboa' or fake '18000'
+  // Auto-correction for leads with default 'Lisboa', fake '18000', or generic/incorrect service
   useEffect(() => {
     leads.forEach(l => {
-      if (l.isLegacy) {
+      if (l.isLegacy || l.source === 'Meta Ads') {
         const updates: Partial<Lead> = {};
         if (l.city && (l.city.includes('Lisboa') || l.city.includes('Vale do Tejo'))) {
           updates.city = 'Barcelona';
@@ -52,6 +54,26 @@ export const LegacyLeadsPipeline: React.FC = () => {
         if (l.estimatedValue === 18000) {
           updates.estimatedValue = 0;
         }
+
+        const isGenericOrOld = !l.service || 
+          l.service.includes('Remodelação') || 
+          l.service.includes('Reforma Geral') || 
+          l.service.toLowerCase().includes('reformulação') ||
+          l.service === 'Reforma';
+
+        if (isGenericOrOld) {
+          const detected = detectLeadInterest({
+            rawMetaFields: l.rawMetaFields,
+            campaignName: l.campaignName,
+            adName: l.adName,
+            notes: l.notes,
+            currentService: l.service
+          });
+          if (detected && detected !== l.service) {
+            updates.service = detected;
+          }
+        }
+
         if (Object.keys(updates).length > 0) {
           updateLead(l.id, updates);
         }
@@ -81,17 +103,38 @@ export const LegacyLeadsPipeline: React.FC = () => {
 
   // Filtered leads
   const filteredLeads = legacyLeads.filter(l => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = 
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = !q || (
       l.name.toLowerCase().includes(q) ||
       l.phone.includes(q) ||
-      l.city.toLowerCase().includes(q) ||
-      l.id.toLowerCase().includes(q) ||
-      (l.campaignName && l.campaignName.toLowerCase().includes(q));
+      (l.service && l.service.toLowerCase().includes(q)) ||
+      (l.city && l.city.toLowerCase().includes(q)) ||
+      (l.campaignName && l.campaignName.toLowerCase().includes(q)) ||
+      (l.adName && l.adName.toLowerCase().includes(q)) ||
+      (l.notes && l.notes.toLowerCase().includes(q)) ||
+      l.id.toLowerCase().includes(q)
+    );
 
     const matchesCampaign = selectedCampaign === 'all' || (l.campaignName || 'Meta Ads Geral') === selectedCampaign;
-    return matchesSearch && matchesCampaign;
+
+    let matchesInterest = true;
+    if (selectedInterestFilter !== 'all') {
+      const badge = getInterestBadge(l.service);
+      matchesInterest = badge.category === selectedInterestFilter;
+    }
+
+    return matchesSearch && matchesCampaign && matchesInterest;
   });
+
+  const interestCounts = {
+    all: legacyLeads.length,
+    ducha: legacyLeads.filter(l => getInterestBadge(l.service).category === 'ducha').length,
+    termo: legacyLeads.filter(l => getInterestBadge(l.service).category === 'termo').length,
+    aire: legacyLeads.filter(l => getInterestBadge(l.service).category === 'aire').length,
+    bano: legacyLeads.filter(l => getInterestBadge(l.service).category === 'bano').length,
+    cocina: legacyLeads.filter(l => getInterestBadge(l.service).category === 'cocina').length,
+    integral: legacyLeads.filter(l => getInterestBadge(l.service).category === 'integral').length,
+  };
 
   const handleDragStart = (leadId: string) => {
     setDraggedLeadId(leadId);
@@ -285,38 +328,155 @@ export const LegacyLeadsPipeline: React.FC = () => {
       </div>
 
       {/* Search and Filters Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Pesquisar por nome, telemóvel, cidade..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20"
-          />
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="relative w-full md:w-96">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Pesquisar contacto, telefone ou interesse (ex: ducha, termo, ar)..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                title="Limpar pesquisa"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            {campaigns.length > 1 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-400 font-medium">Campanha:</span>
+                <select
+                  value={selectedCampaign}
+                  onChange={e => setSelectedCampaign(e.target.value)}
+                  className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700"
+                >
+                  <option value="all">Todas as Campanhas ({campaigns.length})</option>
+                  {campaigns.map((c, i) => (
+                    <option key={i} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <span className="text-xs text-slate-400 font-medium">
+              A mostrar <strong>{filteredLeads.length}</strong> de {legacyLeads.length} leads
+            </span>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {campaigns.length > 1 && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-400 font-medium">Campanha:</span>
-              <select
-                value={selectedCampaign}
-                onChange={e => setSelectedCampaign(e.target.value)}
-                className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700"
-              >
-                <option value="all">Todas as Campanhas ({campaigns.length})</option>
-                {campaigns.map((c, i) => (
-                  <option key={i} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <span className="text-xs text-slate-400">
-            A mostrar <strong>{filteredLeads.length}</strong> de {legacyLeads.length} leads antigos
+        {/* Quick Filter Buttons by Interest Theme */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1 mr-1">
+            <Filter className="w-3 h-3 text-slate-400" />
+            Filtrar Tema:
           </span>
+
+          <button
+            onClick={() => setSelectedInterestFilter('all')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'all'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <span>Todos</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'all' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-600'}`}>
+              {interestCounts.all}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedInterestFilter(selectedInterestFilter === 'ducha' ? 'all' : 'ducha')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'ducha'
+                ? 'bg-cyan-600 text-white shadow-2xs'
+                : 'bg-cyan-50 text-cyan-800 border border-cyan-200 hover:bg-cyan-100'
+            }`}
+          >
+            <span>🚿 Platos de Ducha</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'ducha' ? 'bg-cyan-700 text-white' : 'bg-cyan-100 text-cyan-800'}`}>
+              {interestCounts.ducha}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedInterestFilter(selectedInterestFilter === 'termo' ? 'all' : 'termo')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'termo'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            <span>⚡ Termoeléctricos</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'termo' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-900'}`}>
+              {interestCounts.termo}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedInterestFilter(selectedInterestFilter === 'aire' ? 'all' : 'aire')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'aire'
+                ? 'bg-sky-600 text-white shadow-2xs'
+                : 'bg-sky-50 text-sky-900 border border-sky-200 hover:bg-sky-100'
+            }`}
+          >
+            <span>❄️ Ar Condicionado</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'aire' ? 'bg-sky-700 text-white' : 'bg-sky-100 text-sky-900'}`}>
+              {interestCounts.aire}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedInterestFilter(selectedInterestFilter === 'bano' ? 'all' : 'bano')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'bano'
+                ? 'bg-violet-600 text-white shadow-2xs'
+                : 'bg-violet-50 text-violet-900 border border-violet-200 hover:bg-violet-100'
+            }`}
+          >
+            <span>🛁 Banheiro</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'bano' ? 'bg-violet-700 text-white' : 'bg-violet-100 text-violet-900'}`}>
+              {interestCounts.bano}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedInterestFilter(selectedInterestFilter === 'cocina' ? 'all' : 'cocina')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'cocina'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            <span>🍳 Cozinha</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'cocina' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-900'}`}>
+              {interestCounts.cocina}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedInterestFilter(selectedInterestFilter === 'integral' ? 'all' : 'integral')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              selectedInterestFilter === 'integral'
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100'
+            }`}
+          >
+            <span>🏠 Reformas</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedInterestFilter === 'integral' ? 'bg-indigo-700 text-white' : 'bg-indigo-100 text-indigo-900'}`}>
+              {interestCounts.integral}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -378,22 +538,52 @@ export const LegacyLeadsPipeline: React.FC = () => {
                         onDragStart={() => handleDragStart(lead.id)}
                         className="prime-card p-3.5 space-y-2.5 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group relative border-l-3 border-l-blue-500 bg-white"
                       >
-                        {/* Top ID & Delete button */}
-                        <div className="flex items-start justify-between gap-1">
-                          <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {lead.id}
-                          </span>
+                        {/* Top ID, Date & Delete button */}
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {lead.id}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {lead.dateAdded}
+                            </span>
+                          </div>
 
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => deleteLead(lead.id)}
-                              className="text-slate-300 hover:text-rose-500 p-1"
+                              className="text-slate-300 hover:text-rose-500 p-0.5"
                               title="Excluir Lead"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
+
+                        {/* TIPO DE INTERESSE (BADGE PROEMINENTE COM ÍCONE E COR) */}
+                        {(() => {
+                          const badge = getInterestBadge(lead.service);
+                          return (
+                            <div className="flex items-center justify-between gap-1 bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border shadow-2xs ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}>
+                                <span className="text-sm">{badge.icon}</span>
+                                <span className="truncate max-w-[150px]">{badge.label}</span>
+                              </span>
+
+                              <select
+                                value={lead.service || ''}
+                                onChange={e => updateLead(lead.id, { service: e.target.value })}
+                                className="text-[10px] font-medium text-slate-400 bg-transparent hover:bg-slate-200 p-0.5 rounded border border-transparent hover:border-slate-300 cursor-pointer"
+                                title="Trocar interesse deste lead"
+                              >
+                                <option value="" disabled>Trocar tema...</option>
+                                {STANDARD_INTERESTS.map((opt, i) => (
+                                  <option key={i} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })()}
 
                         {/* Lead Name */}
                         <h4 
@@ -426,27 +616,21 @@ export const LegacyLeadsPipeline: React.FC = () => {
                           <span className="text-[11px] text-slate-400 italic">Sem contacto telefónico</span>
                         )}
 
-                        {/* Service & City */}
-                        <div className="text-[11px] text-slate-600 space-y-1">
-                          <p className="font-semibold text-slate-800 line-clamp-2">
-                            🛠️ {lead.service}
-                          </p>
-                          <p className="flex items-center gap-1 text-slate-500">
+                        {/* City, Campaign and Budget Badge */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 pt-0.5">
+                          <span className="flex items-center gap-1 text-slate-600 font-medium">
                             <MapPin className="w-3 h-3 text-rose-500 shrink-0" />
-                            <span className="truncate">{lead.city || 'Barcelona'}</span>
-                          </p>
-                        </div>
+                            <span>{lead.city || 'Barcelona'}</span>
+                          </span>
 
-                        {/* Campaign and Budget Badge */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
                           {lead.campaignName && (
-                            <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md truncate max-w-[170px]" title={lead.campaignName}>
+                            <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[130px]" title={lead.campaignName}>
                               🎯 {lead.campaignName}
                             </span>
                           )}
 
                           {lead.estimatedValue && lead.estimatedValue > 0 ? (
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
                               € {lead.estimatedValue.toLocaleString('pt-PT')}
                             </span>
                           ) : null}
@@ -562,7 +746,17 @@ export const LegacyLeadsPipeline: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-3 text-slate-600">{lead.city || 'Barcelona'}</td>
-                    <td className="p-3 text-slate-700 font-medium">{lead.service}</td>
+                    <td className="p-3">
+                      {(() => {
+                        const badge = getInterestBadge(lead.service);
+                        return (
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}>
+                            <span>{badge.icon}</span>
+                            <span>{lead.service}</span>
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="p-3">
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-semibold truncate max-w-[150px] block">
                         {lead.campaignName || 'Meta Ads'}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Lead, LeadStatus } from '../../types';
+import { getInterestBadge, STANDARD_INTERESTS } from '../../utils/interestDetector';
 import { 
   X, Phone, Mail, MapPin, Calendar, Clock, DollarSign, 
   Send, User, MessageSquare, AlertCircle, CheckCircle2, 
@@ -73,8 +74,34 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
               {lead.id}
             </span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">{lead.name}</h2>
-              <p className="text-xs text-slate-500">{lead.service} • {lead.city}</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">{lead.name}</h2>
+                {(() => {
+                  const badge = getInterestBadge(lead.service);
+                  return (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-black border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}>
+                      <span>{badge.icon}</span>
+                      <span>{lead.service}</span>
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                <span>📍 {lead.city || 'Barcelona'}</span>
+                <span>•</span>
+                <span className="font-medium text-slate-400">Tema:</span>
+                <select
+                  value={lead.service || ''}
+                  onChange={e => updateLead(lead.id, { service: e.target.value })}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-2 py-0.5 rounded border border-slate-200 cursor-pointer"
+                  title="Alterar interesse"
+                >
+                  <option value="" disabled>Alterar tema...</option>
+                  {STANDARD_INTERESTS.map((opt, i) => (
+                    <option key={i} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

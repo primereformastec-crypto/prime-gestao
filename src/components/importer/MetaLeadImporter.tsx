@@ -6,6 +6,7 @@ import {
   Trash2, Filter, Sparkles, Users, ArrowRight, Check, X 
 } from 'lucide-react';
 import { Lead } from '../../types';
+import { detectLeadInterest, getInterestBadge, STANDARD_INTERESTS } from '../../utils/interestDetector';
 
 interface ParsedMetaLead {
   name: string;
@@ -37,6 +38,7 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
   const [isParsing, setIsParsing] = useState(false);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [selectedCampaignFilter, setSelectedCampaignFilter] = useState('all');
+  const [globalInterestOverride, setGlobalInterestOverride] = useState<string>('auto');
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
 
   // Normalize phone helper for Spain (+34) and international
@@ -133,8 +135,13 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
             const city = (findVal(['city', 'cidade', 'ciudad', 'localidad', 'municipio', 'poblacion', 'provincia', 'concelho']) || 'Barcelona').toString();
             const address = (findVal(['street', 'rua', 'morada', 'address', 'direccion', 'endereco']) || '').toString();
 
-            // 7. Service / Question
-            const serviceQuestion = findVal(['reforma', 'servico', 'servicio', 'obra', 'tipo', 'project', 'interess', 'ar_condicionado', 'aire']) || 'Reforma Geral / Remodelação';
+            // 7. Service / Interest Detection (Ducha, Termo, Ar Condicionado, etc.)
+            const detectedInterest = detectLeadInterest({
+              rawMetaFields: row,
+              campaignName,
+              adName,
+              fileName: file.name
+            });
 
             // 8. Estimated Budget (Only set if explicitly answered in form, otherwise 0)
             const rawBudget = findVal(['presupuesto', 'orcamento', 'budget', 'valor', 'cuanto', 'faixa', 'inversion']);
@@ -165,7 +172,7 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
               city: String(city).trim(),
               address: address ? String(address).trim() : undefined,
               source: 'Meta Ads',
-              service: String(serviceQuestion).trim(),
+              service: detectedInterest,
               salesRep: 'Alexandre (Comercial)',
               estimatedValue,
               status: 'novo_lead',
@@ -350,6 +357,23 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
             </div>
           </div>
 
+          {/* Interest Breakdown Chips */}
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-500 font-bold text-[11px]">Temas Identificados:</span>
+            {(() => {
+              const counts: Record<string, number> = {};
+              parsedLeads.forEach(l => {
+                const b = getInterestBadge(l.service);
+                counts[b.label] = (counts[b.label] || 0) + 1;
+              });
+              return Object.entries(counts).map(([label, count], i) => (
+                <span key={i} className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[11px] font-bold text-slate-700 shadow-2xs">
+                  {label}: <strong className="text-blue-600">{count}</strong>
+                </span>
+              ));
+            })()}
+          </div>
+
           {/* Action & Filter Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -362,6 +386,26 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
                 />
                 <span>Ignorar contactos duplicados (Recomendado)</span>
               </label>
+
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 font-semibold">Tema / Interesse:</span>
+                <select
+                  value={globalInterestOverride}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setGlobalInterestOverride(val);
+                    if (val !== 'auto') {
+                      setParsedLeads(prev => prev.map(l => ({ ...l, service: val })));
+                    }
+                  }}
+                  className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                >
+                  <option value="auto">Deteção Automática (Ducha, Termo, Ar Condicionado...)</option>
+                  {STANDARD_INTERESTS.map((opt, i) => (
+                    <option key={i} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
 
               {campaignsList.length > 1 && (
                 <div className="flex items-center gap-2">
@@ -421,6 +465,7 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
                   <tr>
                     <th className="p-3">Data</th>
                     <th className="p-3">Nome do Lead</th>
+                    <th className="p-3">Interesse / Tema</th>
                     <th className="p-3">Telefone</th>
                     <th className="p-3">Email</th>
                     <th className="p-3">Cidade / Local</th>
@@ -429,31 +474,40 @@ export const MetaLeadImporter: React.FC<{ onComplete?: () => void }> = ({ onComp
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayLeads.slice(0, 50).map((lead, idx) => (
-                    <tr key={idx} className={lead.isDuplicate ? 'bg-amber-50/40 text-slate-500' : 'hover:bg-slate-50'}>
-                      <td className="p-3 font-mono text-[11px] text-slate-500">{lead.dateAdded}</td>
-                      <td className="p-3 font-bold text-slate-900">{lead.name}</td>
-                      <td className="p-3 font-mono font-medium text-slate-700">{lead.phone}</td>
-                      <td className="p-3 text-slate-600 truncate max-w-[160px]">{lead.email}</td>
-                      <td className="p-3 text-slate-600">{lead.city}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-medium text-[10px] truncate max-w-[140px] block">
-                          {lead.campaignName}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        {lead.isDuplicate ? (
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
-                            Duplicado
+                  {displayLeads.slice(0, 50).map((lead, idx) => {
+                    const badge = getInterestBadge(lead.service);
+                    return (
+                      <tr key={idx} className={lead.isDuplicate ? 'bg-amber-50/40 text-slate-500' : 'hover:bg-slate-50'}>
+                        <td className="p-3 font-mono text-[11px] text-slate-500">{lead.dateAdded}</td>
+                        <td className="p-3 font-bold text-slate-900">{lead.name}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}>
+                            <span>{badge.icon}</span>
+                            <span className="truncate max-w-[130px]">{lead.service}</span>
                           </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">
-                            Novo
+                        </td>
+                        <td className="p-3 font-mono font-medium text-slate-700">{lead.phone}</td>
+                        <td className="p-3 text-slate-600 truncate max-w-[160px]">{lead.email}</td>
+                        <td className="p-3 text-slate-600">{lead.city}</td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-medium text-[10px] truncate max-w-[140px] block">
+                            {lead.campaignName}
                           </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="p-3">
+                          {lead.isDuplicate ? (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
+                              Duplicado
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">
+                              Novo
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {displayLeads.length > 50 && (
