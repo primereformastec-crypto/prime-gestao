@@ -7,6 +7,10 @@ import {
   listBackups, 
   createBackupSnapshot 
 } from './apiMiddleware.js';
+import { 
+  fetchStateFromSupabase, 
+  saveStateToSupabase 
+} from './supabase.js';
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -52,9 +56,21 @@ const server = http.createServer((req, res) => {
   // API ROUTE: GET /api/state
   if (pathname === '/api/state' && req.method === 'GET') {
     res.setHeader('Content-Type', 'application/json');
-    const data = getDatabaseState();
-    res.statusCode = 200;
-    res.end(JSON.stringify(data || { isInitialized: false }));
+    fetchStateFromSupabase().then(cloudData => {
+      if (cloudData && cloudData.isInitialized) {
+        saveDatabaseState(cloudData, false);
+        res.statusCode = 200;
+        res.end(JSON.stringify(cloudData));
+        return;
+      }
+      const data = getDatabaseState();
+      res.statusCode = 200;
+      res.end(JSON.stringify(data || { isInitialized: false }));
+    }).catch(() => {
+      const data = getDatabaseState();
+      res.statusCode = 200;
+      res.end(JSON.stringify(data || { isInitialized: false }));
+    });
     return;
   }
 
@@ -68,6 +84,9 @@ const server = http.createServer((req, res) => {
         payload.isInitialized = true;
         payload.lastUpdated = new Date().toISOString();
         saveDatabaseState(payload);
+        saveStateToSupabase(payload).catch(err => {
+          console.warn('[Supabase Sync Warn]:', err);
+        });
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         res.end(JSON.stringify({ success: true, timestamp: payload.lastUpdated }));
@@ -167,6 +186,7 @@ const server = http.createServer((req, res) => {
         stateToRestore.isInitialized = true;
         stateToRestore.lastUpdated = new Date().toISOString();
         saveDatabaseState(stateToRestore, false);
+        saveStateToSupabase(stateToRestore).catch(() => {});
 
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
@@ -204,6 +224,7 @@ const server = http.createServer((req, res) => {
       documents: []
     };
     saveDatabaseState(cleanState, false);
+    saveStateToSupabase(cleanState).catch(() => {});
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
     res.end(JSON.stringify({ success: true, cleanState }));
