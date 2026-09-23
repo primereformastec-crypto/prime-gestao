@@ -61,6 +61,10 @@ export interface Lead {
   timeline: LeadInteraction[];
   clientId?: string;
   projectId?: string;
+  isLegacy?: boolean; // True for historical Meta Ads leads
+  campaignName?: string;
+  adName?: string;
+  rawMetaFields?: Record<string, any>;
 }
 
 // ===================== CLIENTES =====================

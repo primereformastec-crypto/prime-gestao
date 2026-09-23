@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Lead, LeadStatus } from '../../types';
 import { LeadDetailModal } from './LeadDetailModal';
+import { LegacyLeadsPipeline } from './LegacyLeadsPipeline';
 import { 
   Plus, Search, Phone, MapPin, Calendar, Clock, 
   Euro, User, AlertCircle, CheckCircle2, 
-  Filter, Sparkles, ArrowRight, LayoutGrid, List
+  Filter, Sparkles, ArrowRight, LayoutGrid, List, KanbanSquare
 } from 'lucide-react';
 
 export const CrmKanban: React.FC = () => {
   const { leads, moveLeadStatus, addLead, selectedLeadId, setSelectedLeadId } = useApp();
+
+  const [crmSubTab, setCrmSubTab] = useState<'novos' | 'antigos'>('novos');
 
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,8 +34,11 @@ export const CrmKanban: React.FC = () => {
     { id: 'perdido', title: 'Perdido', color: 'border-rose-400', headerBg: 'bg-rose-50 text-rose-800' },
   ];
 
-  // Filtro
-  const filteredLeads = leads.filter(l => {
+  // Filtro (Apenas novos leads da operação diária)
+  const newLeads = leads.filter(l => !l.isLegacy);
+  const legacyLeadsCount = leads.filter(l => l.isLegacy || l.source === 'Meta Ads').length;
+
+  const filteredLeads = newLeads.filter(l => {
     const matchesSearch = 
       l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.phone.includes(searchQuery) ||
@@ -97,8 +103,65 @@ export const CrmKanban: React.FC = () => {
     setSelectedLeadId(created.id);
   };
 
+  if (crmSubTab === 'antigos') {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs m-4 md:m-8 mb-0">
+          <button
+            onClick={() => setCrmSubTab('novos')}
+            className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 text-slate-600 hover:bg-slate-50 transition-all"
+          >
+            <Sparkles className="w-4 h-4 text-slate-400" />
+            <span>Novos Leads (Operação Diária)</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
+              {newLeads.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCrmSubTab('antigos')}
+            className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-blue-600 text-white shadow-xs transition-all"
+          >
+            <KanbanSquare className="w-4 h-4 text-blue-200" />
+            <span>Leads Antigos (Meta Ads / Triagem Alexandre)</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-700 text-white font-bold">
+              {legacyLeadsCount}
+            </span>
+          </button>
+        </div>
+
+        <LegacyLeadsPipeline />
+      </div>
+    );
+  }
+
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-4 md:p-6 overflow-hidden">
+      {/* Top Switcher Tabs */}
+      <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs mb-4 shrink-0">
+        <button
+          onClick={() => setCrmSubTab('novos')}
+          className="flex-1 py-2 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-sky-600 text-white shadow-xs transition-all"
+        >
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <span>Novos Leads (Operação Diária)</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-sky-700 text-white font-bold">
+            {newLeads.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setCrmSubTab('antigos')}
+          className="flex-1 py-2 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 text-slate-600 hover:bg-slate-50 transition-all"
+        >
+          <KanbanSquare className="w-4 h-4 text-slate-400" />
+          <span>Leads Antigos (Meta Ads / Triagem Alexandre)</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700 font-bold">
+            {legacyLeadsCount}
+          </span>
+        </button>
+      </div>
+
       {/* Top Filter Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4 shrink-0 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
         <div className="flex items-center gap-3 w-full sm:w-auto">

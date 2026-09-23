@@ -57,6 +57,8 @@ interface AppContextType {
 
   // Actions
   addLead: (lead: Omit<Lead, 'id' | 'timeline'>) => Lead;
+  importBatchLeads: (leads: Omit<Lead, 'id' | 'timeline'>[]) => number;
+  deleteLead: (id: string) => void;
   updateLead: (id: string, updates: Partial<Lead>) => void;
   moveLeadStatus: (leadId: string, newStatus: LeadStatus) => void;
   addLeadInteraction: (leadId: string, type: any, description: string) => void;
@@ -67,6 +69,7 @@ interface AppContextType {
 
   addProject: (project: Omit<Project, 'id' | 'createdAt'>) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
   archiveProject: (id: string, notes?: string) => void;
   unarchiveProject: (id: string) => void;
 
@@ -620,6 +623,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newLead;
   };
 
+  const importBatchLeads = (newLeadsData: Omit<Lead, 'id' | 'timeline'>[]) => {
+    let currentCount = leads.length;
+    const createdLeads: Lead[] = newLeadsData.map((data, idx) => {
+      const id = `LEAD-${String(currentCount + idx + 1).padStart(4, '0')}`;
+      return {
+        ...data,
+        id,
+        timeline: [
+          {
+            id: `tl-${Date.now()}-${idx}`,
+            date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+            type: 'status_change',
+            description: `Importado de lote Meta Ads (${data.campaignName || 'Meta Ads'})`,
+            author: currentUser.name
+          }
+        ]
+      };
+    });
+
+    setLeads(prev => [...createdLeads, ...prev]);
+    logAudit('lead', 'BATCH', 'Importação em Lote', `${createdLeads.length} leads importados do Meta Ads`);
+    addNotification({
+      type: 'stage',
+      title: 'Importação Meta Ads Concluída',
+      message: `${createdLeads.length} leads foram importados com sucesso para o Pipeline de Leads Antigos.`,
+      severity: 'success',
+      linkTarget: 'leads_antigos'
+    });
+    return createdLeads.length;
+  };
+
+  const deleteLead = (id: string) => {
+    setLeads(prev => prev.filter(l => l.id !== id));
+    logAudit('lead', id, 'Exclusão de Lead', `Lead ${id} removido.`);
+  };
+
   const updateLead = (id: string, updates: Partial<Lead>) => {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
@@ -892,6 +931,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateProject = (id: string, updates: Partial<Project>) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+  };
+
+  const deleteProject = (id: string) => {
+    setProjects(prev => prev.filter(p => p.id !== id));
+    setStages(prev => prev.filter(s => s.projectId !== id));
+    logAudit('project', id, 'Exclusão de Obra', `Obra ${id} removida.`);
   };
 
   const addStage = (stageData: Omit<ProjectStage, 'id'>) => {
@@ -1624,6 +1669,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notifications,
       auditLogs,
       addLead,
+      importBatchLeads,
+      deleteLead,
       updateLead,
       moveLeadStatus,
       addLeadInteraction,
@@ -1632,6 +1679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateClient,
       addProject,
       updateProject,
+      deleteProject,
       archiveProject,
       unarchiveProject,
       addStage,

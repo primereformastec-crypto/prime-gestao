@@ -69,10 +69,33 @@ export const ExcelImporter: React.FC = () => {
           <div>
             <h1 className="text-xl font-black text-slate-900 tracking-tight">Importação de Ficheiros Excel</h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Carregue os dois ficheiros Excel do sistema atual para sincronizar CRM, Obras, Diárias e Cronograma.
+              Carregue os ficheiros Excel do sistema para sincronizar CRM, Obras, Diárias e Cronograma.
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Meta Ads 11-File Batch Card */}
+      <div className="bg-gradient-to-r from-blue-900 to-slate-900 text-white p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-blue-800 shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 bg-blue-500 text-white rounded font-bold text-[10px] uppercase tracking-wider">
+              Novo: Meta Ads em Lote
+            </span>
+            <span className="text-xs text-blue-200">11 Ficheiros Excel</span>
+          </div>
+          <h3 className="font-bold text-sm text-white">Importador de Leads do Facebook & Instagram Ads</h3>
+          <p className="text-xs text-slate-300">
+            Carregue os seus 11 ficheiros do Meta Ads com mapeamento automático de colunas, remoção de duplicados e triagem para o Alexandre.
+          </p>
+        </div>
+        <button
+          onClick={() => setActiveTab('leads_antigos')}
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shrink-0 shadow-md transition-all"
+        >
+          <span>Abrir Importador Meta (11 Excels)</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Two Upload Cards */}

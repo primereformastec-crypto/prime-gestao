@@ -5,7 +5,7 @@ import {
   ListTree, Calendar, Clock, Package, Receipt, FileText, 
   Coins, UserCheck, BarChart3, Settings, ShieldCheck, 
   Sparkles, Smartphone, Eye, UploadCloud, ChevronDown, ChevronRight,
-  Briefcase, Wrench, Wallet, PieChart, LogOut, X
+  Briefcase, Wrench, Wallet, PieChart, LogOut, X, History
 } from 'lucide-react';
 
 interface NavSection {
@@ -29,7 +29,8 @@ export const Sidebar: React.FC = () => {
   } = useApp();
 
   // Badges calculations
-  const newLeadsCount = leads.filter(l => l.status === 'novo_lead').length;
+  const newLeadsCount = leads.filter(l => !l.isLegacy && l.status === 'novo_lead').length;
+  const legacyLeadsCount = leads.filter(l => l.isLegacy && l.status === 'novo_lead').length;
   const activeProjectsCount = projects.filter(p => p.status === 'em_execucao').length;
   const pendingInvoicesCount = invoices.filter(i => i.status === 'emitida' || i.status === 'pendente' || i.status === 'parcialmente_paga').length;
   const pendingShiftsCount = shifts.filter(s => s.status === 'pendente').length;
@@ -43,7 +44,8 @@ export const Sidebar: React.FC = () => {
       items: [
         { id: 'dashboard', label: 'Dashboard Geral', icon: LayoutDashboard, roles: ['admin', 'financeiro'] },
         { id: 'hoje', label: 'Hoje (Follow-up)', icon: CheckSquare, badge: newLeadsCount > 0 ? newLeadsCount : undefined, badgeColor: 'bg-amber-500', roles: ['admin', 'comercial'] },
-        { id: 'crm', label: 'CRM & Pipeline', icon: KanbanSquare, badge: newLeadsCount > 0 ? newLeadsCount : undefined, badgeColor: 'bg-blue-500', roles: ['admin', 'comercial'] },
+        { id: 'crm', label: 'CRM (Novos Leads)', icon: KanbanSquare, badge: newLeadsCount > 0 ? newLeadsCount : undefined, badgeColor: 'bg-sky-500', roles: ['admin', 'comercial'] },
+        { id: 'leads_antigos', label: 'Leads Antigos (Meta)', icon: History, badge: legacyLeadsCount > 0 ? legacyLeadsCount : undefined, badgeColor: 'bg-blue-600', roles: ['admin', 'comercial'] },
         { id: 'clientes', label: 'Clientes (Carteira)', icon: UserCheck, roles: ['admin', 'comercial', 'financeiro'] },
       ]
     },

@@ -5,6 +5,7 @@ import { Header } from './components/layout/Header';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { ExecutiveDashboard } from './components/dashboard/ExecutiveDashboard';
 import { CrmKanban } from './components/crm/CrmKanban';
+import { LegacyLeadsPipeline } from './components/crm/LegacyLeadsPipeline';
 import { TodayView } from './components/crm/TodayView';
 import { ClientsView } from './components/crm/ClientsView';
 import { ProjectsList } from './components/projects/ProjectsList';
@@ -66,6 +67,9 @@ const MainLayout: React.FC = () => {
       case 'crm':
       case 'leads':
         return <CrmKanban />;
+      case 'leads_antigos':
+      case 'meta_leads':
+        return <LegacyLeadsPipeline />;
       case 'clientes':
         return <ClientsView />;
       case 'obras':
