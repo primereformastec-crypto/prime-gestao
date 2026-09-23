@@ -52,17 +52,77 @@ export const WorkerDayView: React.FC = () => {
     setTimeout(() => setSubmitted(false), 4000);
   };
 
-  const handleSimulatePhotoUpload = () => {
-    if (!todayProject) return;
-    addPhoto({
-      projectId: todayProject.id,
-      date: new Date().toISOString().slice(0, 10),
-      url: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=600&auto=format&fit=crop&q=80',
-      caption: `Foto de campo enviada por ${currentUser.name}`,
-      category: 'execucao',
-      employeeName: currentUser.name
-    });
-    alert('Fotografia da obra enviada com sucesso para o Gestor de Obra!');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const handleRealPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !todayProject) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const rawData = event.target?.result as string;
+
+        // Compress image using canvas
+        const img = new window.Image();
+        img.src = rawData;
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 1280;
+          let width = img.width;
+          let height = img.height;
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+          // Try uploading to server
+          let photoUrl = compressedDataUrl;
+          try {
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileName: file.name || 'foto_obra.jpg',
+                fileData: compressedDataUrl
+              })
+            });
+            const resData = await res.json();
+            if (resData.url) {
+              photoUrl = resData.url;
+            }
+          } catch (err) {
+            console.warn('Upload servidor falhou, salvando inline data-url:', err);
+          }
+
+          addPhoto({
+            projectId: todayProject.id,
+            date: new Date().toISOString().slice(0, 10),
+            url: photoUrl,
+            caption: `Foto de campo enviada por ${currentUser.name}`,
+            category: 'execucao',
+            employeeName: currentUser.name
+          });
+          setIsUploadingPhoto(false);
+          alert('✓ Fotografia real da obra guardada com sucesso!');
+        };
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setIsUploadingPhoto(false);
+      alert('Erro ao carregar fotografia');
+    }
   };
 
   return (
@@ -162,13 +222,22 @@ export const WorkerDayView: React.FC = () => {
           </div>
 
           <div className="flex gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              capture="environment"
+              onChange={handleRealPhotoUpload}
+              className="hidden"
+            />
             <button
               type="button"
-              onClick={handleSimulatePhotoUpload}
+              disabled={isUploadingPhoto}
+              onClick={() => fileInputRef.current?.click()}
               className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
             >
               <Camera className="w-4 h-4 text-slate-500" />
-              <span>Tirar Foto da Obra</span>
+              <span>{isUploadingPhoto ? 'A guardar foto...' : 'Tirar Foto da Obra'}</span>
             </button>
 
             <button

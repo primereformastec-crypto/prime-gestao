@@ -6,7 +6,7 @@ import {
   Clock, DollarSign, TrendingUp, AlertTriangle, Plus, FileText, 
   Package, Receipt, ShieldCheck, Flag, CheckSquare, Sparkles, 
   Trash2, Image, UploadCloud, ChevronRight, Eye, Users2,
-  HardHat, Wallet, CreditCard
+  HardHat, Wallet, CreditCard, Camera
 } from 'lucide-react';
 
 interface Props {
@@ -43,6 +43,71 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
   const [showAddDailyLogModal, setShowAddDailyLogModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const handleUploadProjectPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !project) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const rawData = event.target?.result as string;
+        const img = new window.Image();
+        img.src = rawData;
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 1280;
+          let width = img.width;
+          let height = img.height;
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+          let photoUrl = compressedDataUrl;
+          try {
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileName: file.name || 'foto_obra.jpg',
+                fileData: compressedDataUrl
+              })
+            });
+            const resData = await res.json();
+            if (resData.url) photoUrl = resData.url;
+          } catch (err) {
+            console.warn('Upload server error, fallback to data-url:', err);
+          }
+
+          addPhoto({
+            projectId: project.id,
+            date: new Date().toISOString().slice(0, 10),
+            url: photoUrl,
+            caption: file.name.replace(/\.[^/.]+$/, "") || 'Fotografia da Obra',
+            category: 'execucao'
+          });
+          setIsUploadingPhoto(false);
+        };
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      setIsUploadingPhoto(false);
+      alert('Erro ao carregar fotografia');
+    }
+  };
 
   // Forms states
   const [shiftForm, setShiftForm] = useState<{
@@ -1262,7 +1327,28 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
         {activeTab === 'fotos' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900">Galeria de Fotos da Obra</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Galeria de Fotos da Obra</h3>
+                <p className="text-xs text-slate-400">Registo visual do andamento e detalhes técnicos</p>
+              </div>
+              <div>
+                <input
+                  type="file"
+                  ref={photoInputRef}
+                  accept="image/*"
+                  onChange={handleUploadProjectPhoto}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isUploadingPhoto}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="prime-btn-primary flex items-center gap-1.5 text-xs py-2 px-3 shadow-xs"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>{isUploadingPhoto ? 'A guardar...' : 'Adicionar Foto da Obra'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
