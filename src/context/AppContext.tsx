@@ -76,7 +76,7 @@ interface AppContextType {
 
   addClient: (client: Omit<Client, 'id' | 'createdAt'>) => Client;
   updateClient: (id: string, updates: Partial<Client>) => void;
-  deleteClient: (id: string) => void;
+  deleteClient: (id: string, deleteAssociatedProjects?: boolean) => void;
 
   addProject: (project: Omit<Project, 'id' | 'createdAt'>) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -294,23 +294,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [isCleanMode, setIsCleanMode] = useState<boolean>(true);
 
+  // Histórico de IDs eliminados para evitar que sejam ressuscitados em sincronizações multi-dispositivo
+  const [deletedEntityIds, setDeletedEntityIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const s = localStorage.getItem('prime_deleted_ids');
+      return s ? JSON.parse(s) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('prime_deleted_ids', JSON.stringify(deletedEntityIds));
+  }, [deletedEntityIds]);
+
   // Coleções principais 100% limpas para dados reais da equipa
   const [leads, setLeads] = useState<Lead[]>(() => sanitizeStorageArray<Lead>('prime_leads'));
   const [clients, setClients] = useState<Client[]>(() => {
     const loaded = sanitizeStorageArray<Client>('prime_clients');
+    let delSet = new Set<string>();
+    try {
+      const s = typeof window !== 'undefined' ? localStorage.getItem('prime_deleted_ids') : null;
+      if (s) delSet = new Set(JSON.parse(s));
+    } catch {}
+
     if (loaded && loaded.length > 0) {
-      const hasAlba = loaded.some(c => c.name.toLowerCase().includes('alba') || c.id === 'CLI-001');
-      return hasAlba ? loaded : [...DEFAULT_RESTORED_CLIENTS, ...loaded];
+      return loaded.filter(c => !delSet.has(c.id));
     }
-    return DEFAULT_RESTORED_CLIENTS;
+    return DEFAULT_RESTORED_CLIENTS.filter(c => !delSet.has(c.id));
   });
   const [projects, setProjects] = useState<Project[]>(() => {
     const loaded = sanitizeStorageArray<Project>('prime_projects');
+    let delSet = new Set<string>();
+    try {
+      const s = typeof window !== 'undefined' ? localStorage.getItem('prime_deleted_ids') : null;
+      if (s) delSet = new Set(JSON.parse(s));
+    } catch {}
+
     if (loaded && loaded.length > 0) {
-      const hasObra = loaded.some(p => p.title.toLowerCase().includes('sant cugat') || p.id === 'OB-0001');
-      return hasObra ? loaded : [...DEFAULT_RESTORED_PROJECTS, ...loaded];
+      return loaded.filter(p => !delSet.has(p.id));
     }
-    return DEFAULT_RESTORED_PROJECTS;
+    return DEFAULT_RESTORED_PROJECTS.filter(p => !delSet.has(p.id));
   });
   const [stages, setStages] = useState<ProjectStage[]>(() => sanitizeStorageArray<ProjectStage>('prime_stages'));
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -405,23 +430,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then(data => {
         if (data && data.isInitialized) {
           if (data.isCleanMode) setIsCleanMode(true);
-          if (data.leads && data.leads.length > 0) setLeads(data.leads);
+          if (data.deletedEntityIds && Array.isArray(data.deletedEntityIds)) {
+            setDeletedEntityIds(prev => Array.from(new Set([...prev, ...data.deletedEntityIds])));
+          }
 
-          // PROTECTED SYNC: Never wipe clients with empty server arrays
+          const delSet = new Set([...deletedEntityIds, ...(data.deletedEntityIds || [])]);
+
+          if (data.leads && data.leads.length > 0) setLeads(data.leads.filter((l: Lead) => !delSet.has(l.id)));
+
+          // PROTECTED SYNC: Never wipe clients with empty server arrays, respect deleted
           if (data.clients && data.clients.length > 0) {
             setClients(prev => {
-              const existingIds = new Set(data.clients.map((c: Client) => c.id));
-              const missingFromRemote = prev.filter(c => !existingIds.has(c.id));
-              return [...data.clients, ...missingFromRemote];
+              const activeRemote = data.clients.filter((c: Client) => !delSet.has(c.id));
+              const existingIds = new Set(activeRemote.map((c: Client) => c.id));
+              const missingFromRemote = prev.filter(c => !existingIds.has(c.id) && !delSet.has(c.id));
+              return [...activeRemote, ...missingFromRemote];
             });
           }
 
-          // PROTECTED SYNC: Never wipe projects with empty server arrays
+          // PROTECTED SYNC: Never wipe projects with empty server arrays, respect deleted
           if (data.projects && data.projects.length > 0) {
             setProjects(prev => {
-              const existingIds = new Set(data.projects.map((p: Project) => p.id));
-              const missingFromRemote = prev.filter(p => !existingIds.has(p.id));
-              return [...data.projects, ...missingFromRemote];
+              const activeRemote = data.projects.filter((p: Project) => !delSet.has(p.id));
+              const existingIds = new Set(activeRemote.map((p: Project) => p.id));
+              const missingFromRemote = prev.filter(p => !existingIds.has(p.id) && !delSet.has(p.id));
+              return [...activeRemote, ...missingFromRemote];
             });
           }
 
@@ -470,6 +503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           changeOrders,
           dailyLogs,
           photos,
+          deletedEntityIds
         })
       }).catch(() => {});
     }, 800);
@@ -478,7 +512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [
     isCleanMode, leads, clients, projects, stages, employees, shifts, tools, materialStock,
     materials, expenses, fixedExpenses, invoices, payments, milestones,
-    changeOrders, dailyLogs, photos, documents
+    changeOrders, dailyLogs, photos, documents, deletedEntityIds
   ]);
 
   // Periodic background refresh from central server so team members automatically see each other's registered clients, works, and leads
@@ -488,31 +522,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .then(res => res.json())
         .then(data => {
           if (data && data.isInitialized) {
+            const delSet = new Set([...deletedEntityIds, ...(data.deletedEntityIds || [])]);
+
             if (data.clients && data.clients.length > 0) {
               setClients(prev => {
-                const existingMap = new Map(prev.map(c => [c.id, c]));
+                const existingMap = new Map(prev.filter(c => !delSet.has(c.id)).map(c => [c.id, c]));
                 let changed = false;
                 data.clients.forEach((rc: Client) => {
-                  if (!existingMap.has(rc.id)) {
+                  if (!delSet.has(rc.id) && !existingMap.has(rc.id)) {
                     existingMap.set(rc.id, rc);
                     changed = true;
                   }
                 });
-                return changed ? Array.from(existingMap.values()) : prev;
+                return changed ? Array.from(existingMap.values()) : prev.filter(c => !delSet.has(c.id));
               });
             }
 
             if (data.projects && data.projects.length > 0) {
               setProjects(prev => {
-                const existingMap = new Map(prev.map(p => [p.id, p]));
+                const existingMap = new Map(prev.filter(p => !delSet.has(p.id)).map(p => [p.id, p]));
                 let changed = false;
                 data.projects.forEach((rp: Project) => {
-                  if (!existingMap.has(rp.id)) {
+                  if (!delSet.has(rp.id) && !existingMap.has(rp.id)) {
                     existingMap.set(rp.id, rp);
                     changed = true;
                   }
                 });
-                return changed ? Array.from(existingMap.values()) : prev;
+                return changed ? Array.from(existingMap.values()) : prev.filter(p => !delSet.has(p.id));
               });
             }
 
@@ -1082,9 +1118,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('client', id, 'Atualização de Cliente', `Dados do cliente ${id} atualizados.`);
   };
 
-  const deleteClient = (id: string) => {
+  const deleteClient = (id: string, deleteAssociatedProjects: boolean = false) => {
+    // 1. Regista no conjunto de IDs eliminados para não ressuscitar em sincronização
+    setDeletedEntityIds(prev => {
+      const updated = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem('prime_deleted_ids', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    // 2. Remove da lista local de clientes
     setClients(prev => prev.filter(c => c.id !== id));
-    logAudit('client', id, 'Eliminação de Cliente', `Cliente ${id} removido.`);
+
+    // 3. Se solicitado, remove obras vinculadas a este cliente
+    if (deleteAssociatedProjects) {
+      setProjects(prev => {
+        const toRemove = prev.filter(p => p.clientId === id).map(p => p.id);
+        if (toRemove.length > 0) {
+          setDeletedEntityIds(old => {
+            const up = Array.from(new Set([...old, ...toRemove]));
+            try {
+              localStorage.setItem('prime_deleted_ids', JSON.stringify(up));
+            } catch {}
+            return up;
+          });
+          setStages(sPrev => sPrev.filter(s => !toRemove.includes(s.projectId)));
+        }
+        return prev.filter(p => p.clientId !== id);
+      });
+    }
+
+    logAudit('client', id, 'Eliminação de Cliente', `Cliente ${id} removido da carteira.`);
+
+    // 4. Notifica o backend para persistir remoção no arquivo local e Supabase
+    fetch('/api/delete-entity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: 'clients', id, deleteAssociatedProjects })
+    }).catch(err => console.warn('[DeleteClient Sync Error]:', err));
   };
 
   // ===================== PROJECT STAGES & SUBTASKS =====================
@@ -1106,9 +1178,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProject = (id: string) => {
+    setDeletedEntityIds(prev => {
+      const updated = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem('prime_deleted_ids', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     setProjects(prev => prev.filter(p => p.id !== id));
     setStages(prev => prev.filter(s => s.projectId !== id));
     logAudit('project', id, 'Exclusão de Obra', `Obra ${id} removida.`);
+
+    fetch('/api/delete-entity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: 'projects', id })
+    }).catch(err => console.warn('[DeleteProject Sync Error]:', err));
   };
 
   const addStage = (stageData: Omit<ProjectStage, 'id'>) => {

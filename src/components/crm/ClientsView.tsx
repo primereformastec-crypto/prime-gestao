@@ -69,15 +69,38 @@ export const ClientsView: React.FC = () => {
     setClientToEdit(null);
   };
 
-  const handleDeleteClient = (client: Client) => {
-    if (window.confirm(`Tem a certeza que deseja eliminar o cliente "${client.name}" (${client.id})? Esta ação removerá o registo da carteira.`)) {
-      deleteClient(client.id);
-      if (selectedClient?.id === client.id) {
-        setSelectedClient(null);
-      }
-      setShowEditModal(false);
-      setClientToEdit(null);
+  // Estados para modal seguro de eliminação em 2 etapas
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
+  const [confirmDeleteInput, setConfirmDeleteInput] = useState('');
+  const [deleteAssociatedProjects, setDeleteAssociatedProjects] = useState(true);
+
+  const openDeleteModal = (client: Client) => {
+    setClientToDelete(client);
+    setDeleteStep(1);
+    setConfirmDeleteInput('');
+    const linked = projects.filter(p => p.clientId === client.id);
+    setDeleteAssociatedProjects(linked.length > 0);
+  };
+
+  const handleCancelDelete = () => {
+    setClientToDelete(null);
+    setDeleteStep(1);
+    setConfirmDeleteInput('');
+  };
+
+  const handleConfirmDelete = () => {
+    if (!clientToDelete) return;
+    if (confirmDeleteInput.trim().toUpperCase() !== 'ELIMINAR') return;
+
+    deleteClient(clientToDelete.id, deleteAssociatedProjects);
+    if (selectedClient?.id === clientToDelete.id) {
+      const remaining = clients.filter(c => c.id !== clientToDelete.id);
+      setSelectedClient(remaining[0] || null);
     }
+    setShowEditModal(false);
+    setClientToEdit(null);
+    handleCancelDelete();
   };
 
   // Form para novo cliente
@@ -262,6 +285,14 @@ export const ClientsView: React.FC = () => {
                       >
                         <Edit3 className="w-3.5 h-3.5 text-amber-600" />
                         <span>Editar Cliente</span>
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(currentClient)}
+                        className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs hover:scale-102 cursor-pointer"
+                        title="Eliminar este cliente com confirmação dupla de segurança"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Eliminar Cliente</span>
                       </button>
                     </div>
 
@@ -493,6 +524,14 @@ export const ClientsView: React.FC = () => {
                           >
                             <Edit3 className="w-3 h-3 text-amber-600" />
                             <span>Editar</span>
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(c)}
+                            className="p-1 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Eliminar Cliente (com confirmação dupla)"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Eliminar</span>
                           </button>
                         </div>
                       </td>
@@ -742,11 +781,15 @@ export const ClientsView: React.FC = () => {
               <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDeleteClient(clientToEdit)}
+                  onClick={() => {
+                    const toDel = clientToEdit;
+                    setShowEditModal(false);
+                    if (toDel) openDeleteModal(toDel);
+                  }}
                   className="px-3 py-2 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Eliminar</span>
+                  <span>Eliminar Cliente...</span>
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -770,6 +813,178 @@ export const ClientsView: React.FC = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE SEGURANÇA: ELIMINAR CLIENTE COM CONFIRMAÇÃO DUPLA (2 ETAPAS) */}
+      {clientToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-rose-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-rose-100 bg-rose-50/70 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 border border-rose-200">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-rose-950 flex items-center gap-2">
+                    Eliminar Registo de Cliente
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-200/80 text-rose-800">
+                      Etapa {deleteStep} de 2
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-rose-700 font-medium">
+                    {deleteStep === 1 ? 'Revisão dos dados do cliente e obras vinculadas' : 'Confirmação obrigatória de segurança'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={handleCancelDelete} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-white/80 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {deleteStep === 1 ? (
+              /* ETAPA 1: REVISÃO E AVISO */
+              <div className="p-6 space-y-4 text-xs">
+                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold">Atenção: Você solicitou a eliminação do cliente abaixo.</p>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Esta ação removerá o registo da carteira oficial de clientes e sincronizará a remoção com a nuvem permanente da PRIME.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Ficha resumida do cliente que será eliminado */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded">
+                      {clientToDelete.id}
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-semibold">
+                      Criado em: {clientToDelete.createdAt || '2026-09-24'}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900">{clientToDelete.name}</h4>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
+                    <div><strong>Telefone:</strong> {clientToDelete.phone || 'Sem telefone'}</div>
+                    <div><strong>NIF:</strong> {clientToDelete.nif || 'Não informado'}</div>
+                    <div className="col-span-2"><strong>Morada:</strong> {clientToDelete.address || '-'}, {clientToDelete.city || 'Barcelona'}</div>
+                  </div>
+                </div>
+
+                {/* Obras associadas */}
+                {(() => {
+                  const linkedObras = projects.filter(p => p.clientId === clientToDelete.id);
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                        <span>Obras vinculadas ({linkedObras.length})</span>
+                      </div>
+                      {linkedObras.length > 0 ? (
+                        <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                          {linkedObras.map(o => (
+                            <div key={o.id} className="p-2 bg-slate-100/80 rounded-lg flex items-center justify-between text-[11px]">
+                              <div>
+                                <span className="font-mono font-bold text-sky-700">{o.id}</span> - <span className="font-semibold">{o.title}</span>
+                              </div>
+                              <span className="font-bold text-slate-900">€{o.contractValue.toLocaleString('pt-PT')}</span>
+                            </div>
+                          ))}
+                          <label className="flex items-center gap-2 pt-2 text-rose-700 font-bold cursor-pointer">
+                            <input 
+                              type="checkbox"
+                              checked={deleteAssociatedProjects}
+                              onChange={e => setDeleteAssociatedProjects(e.target.checked)}
+                              className="rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                            />
+                            <span>Eliminar também as {linkedObras.length} obra(s) vinculada(s) a este cliente</span>
+                          </label>
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 italic text-[11px]">Nenhuma obra vinculada a este cliente.</p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Rodapé Etapa 1 */}
+                <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleCancelDelete}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-bold cursor-pointer transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteStep(2)}
+                    className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <span>Prosseguir para Confirmação Final (2/2)</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ETAPA 2: CONFIRMAÇÃO DUPLA COM DIGITAÇÃO OBRIGATÓRIA */
+              <div className="p-6 space-y-5 text-xs">
+                <div className="p-4 bg-rose-50 rounded-xl border border-rose-200 text-rose-900 space-y-2">
+                  <div className="flex items-center gap-2 font-black text-rose-700 text-sm">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <span>CONFIRMAÇÃO DEFINITIVA IRREVERSÍVEL</span>
+                  </div>
+                  <p className="text-[11px] text-rose-800 leading-relaxed">
+                    Você está prestes a eliminar definitivamente o cliente <strong>{clientToDelete.name}</strong> ({clientToDelete.id}).
+                    Esta operação é permanente e removerá os registos do sistema e da nuvem.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block font-bold text-slate-800">
+                    Para desbloquear a eliminação definitiva, digite a palavra <span className="text-rose-600 uppercase font-black bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">ELIMINAR</span> no campo abaixo:
+                  </label>
+                  <input 
+                    type="text"
+                    autoFocus
+                    value={confirmDeleteInput}
+                    onChange={e => setConfirmDeleteInput(e.target.value)}
+                    placeholder="Digite ELIMINAR para confirmar"
+                    className="w-full p-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl font-mono text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500 focus:bg-white"
+                  />
+                </div>
+
+                {/* Rodapé Etapa 2 */}
+                <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteStep(1)}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-bold cursor-pointer transition-colors"
+                  >
+                    ← Voltar ao Passo 1
+                  </button>
+                  <button
+                    type="button"
+                    disabled={confirmDeleteInput.trim().toUpperCase() !== 'ELIMINAR'}
+                    onClick={handleConfirmDelete}
+                    className={`px-5 py-2.5 rounded-xl font-bold text-white shadow-xs flex items-center gap-2 transition-all ${
+                      confirmDeleteInput.trim().toUpperCase() === 'ELIMINAR'
+                        ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer shadow-rose-500/20'
+                        : 'bg-slate-300 cursor-not-allowed text-slate-500'
+                    }`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Confirmar Eliminação Definitiva</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

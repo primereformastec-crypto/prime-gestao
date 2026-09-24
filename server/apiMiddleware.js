@@ -188,22 +188,63 @@ export function apiMiddlewarePlugin() {
           return;
         }
 
-        // Helper for non-destructive collection merging across devices
-        function mergeCollectionsById(existing = [], incoming = []) {
-          if (!incoming || !Array.isArray(incoming) || incoming.length === 0) return existing || [];
-          if (!existing || !Array.isArray(existing) || existing.length === 0) return incoming || [];
+        // Helper for non-destructive collection merging across devices (respects deleted IDs)
+        function mergeCollectionsById(existing = [], incoming = [], deletedIds = new Set()) {
+          if (!incoming || !Array.isArray(incoming)) incoming = [];
+          if (!existing || !Array.isArray(existing)) existing = [];
           
           const map = new Map();
           existing.forEach(item => {
-            if (item && item.id) map.set(item.id, item);
+            if (item && item.id && !deletedIds.has(item.id)) map.set(item.id, item);
           });
           incoming.forEach(item => {
-            if (item && item.id) {
+            if (item && item.id && !deletedIds.has(item.id)) {
               const prev = map.get(item.id);
               map.set(item.id, prev ? { ...prev, ...item } : item);
             }
           });
           return Array.from(map.values());
+        }
+
+        // POST /api/delete-entity (Remoção segura e permanente de clientes, obras, etc.)
+        if (pathname === '/api/delete-entity' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const { entityType, id, deleteAssociatedProjects } = JSON.parse(body || '{}');
+              if (!entityType || !id) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'entityType e id são obrigatórios' }));
+                return;
+              }
+
+              const currentState = getDatabaseState() || {};
+              if (Array.isArray(currentState[entityType])) {
+                currentState[entityType] = currentState[entityType].filter(item => item && item.id !== id);
+              }
+
+              if (entityType === 'clients' && deleteAssociatedProjects && Array.isArray(currentState.projects)) {
+                currentState.projects = currentState.projects.filter(p => p && p.clientId !== id);
+              }
+
+              if (!Array.isArray(currentState.deletedEntityIds)) currentState.deletedEntityIds = [];
+              if (!currentState.deletedEntityIds.includes(id)) {
+                currentState.deletedEntityIds.push(id);
+              }
+
+              currentState.lastUpdated = new Date().toISOString();
+              saveDatabaseState(currentState, true);
+
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 200;
+              res.end(JSON.stringify({ success: true, id, entityType }));
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
         }
 
         // POST /api/sync
@@ -214,19 +255,25 @@ export function apiMiddlewarePlugin() {
             try {
               const payload = JSON.parse(body);
               const currentState = getDatabaseState() || {};
+              const combinedDeleted = new Set([
+                ...(payload.deletedEntityIds || []),
+                ...(currentState.deletedEntityIds || [])
+              ]);
+
               const mergedPayload = {
                 ...currentState,
                 ...payload,
-                clients: mergeCollectionsById(currentState.clients, payload.clients),
-                projects: mergeCollectionsById(currentState.projects, payload.projects),
-                leads: mergeCollectionsById(currentState.leads, payload.leads),
-                employees: mergeCollectionsById(currentState.employees, payload.employees),
-                tools: mergeCollectionsById(currentState.tools, payload.tools),
-                materialStock: mergeCollectionsById(currentState.materialStock, payload.materialStock),
-                shifts: mergeCollectionsById(currentState.shifts, payload.shifts),
-                invoices: mergeCollectionsById(currentState.invoices, payload.invoices),
-                expenses: mergeCollectionsById(currentState.expenses, payload.expenses),
-                materials: mergeCollectionsById(currentState.materials, payload.materials),
+                clients: mergeCollectionsById(currentState.clients, payload.clients, combinedDeleted),
+                projects: mergeCollectionsById(currentState.projects, payload.projects, combinedDeleted),
+                leads: mergeCollectionsById(currentState.leads, payload.leads, combinedDeleted),
+                employees: mergeCollectionsById(currentState.employees, payload.employees, combinedDeleted),
+                tools: mergeCollectionsById(currentState.tools, payload.tools, combinedDeleted),
+                materialStock: mergeCollectionsById(currentState.materialStock, payload.materialStock, combinedDeleted),
+                shifts: mergeCollectionsById(currentState.shifts, payload.shifts, combinedDeleted),
+                invoices: mergeCollectionsById(currentState.invoices, payload.invoices, combinedDeleted),
+                expenses: mergeCollectionsById(currentState.expenses, payload.expenses, combinedDeleted),
+                materials: mergeCollectionsById(currentState.materials, payload.materials, combinedDeleted),
+                deletedEntityIds: Array.from(combinedDeleted),
                 isInitialized: true,
                 lastUpdated: new Date().toISOString()
               };
