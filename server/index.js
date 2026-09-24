@@ -74,6 +74,24 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Helper for non-destructive collection merging across devices
+  function mergeCollectionsById(existing = [], incoming = []) {
+    if (!incoming || !Array.isArray(incoming) || incoming.length === 0) return existing || [];
+    if (!existing || !Array.isArray(existing) || existing.length === 0) return incoming || [];
+    
+    const map = new Map();
+    existing.forEach(item => {
+      if (item && item.id) map.set(item.id, item);
+    });
+    incoming.forEach(item => {
+      if (item && item.id) {
+        const prev = map.get(item.id);
+        map.set(item.id, prev ? { ...prev, ...item } : item);
+      }
+    });
+    return Array.from(map.values());
+  }
+
   // API ROUTE: POST /api/sync
   if (pathname === '/api/sync' && req.method === 'POST') {
     let body = '';
@@ -81,15 +99,30 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const payload = JSON.parse(body);
-        payload.isInitialized = true;
-        payload.lastUpdated = new Date().toISOString();
-        saveDatabaseState(payload);
-        saveStateToSupabase(payload).catch(err => {
+        const currentState = getDatabaseState() || {};
+        const mergedPayload = {
+          ...currentState,
+          ...payload,
+          clients: mergeCollectionsById(currentState.clients, payload.clients),
+          projects: mergeCollectionsById(currentState.projects, payload.projects),
+          leads: mergeCollectionsById(currentState.leads, payload.leads),
+          employees: mergeCollectionsById(currentState.employees, payload.employees),
+          tools: mergeCollectionsById(currentState.tools, payload.tools),
+          materialStock: mergeCollectionsById(currentState.materialStock, payload.materialStock),
+          shifts: mergeCollectionsById(currentState.shifts, payload.shifts),
+          invoices: mergeCollectionsById(currentState.invoices, payload.invoices),
+          expenses: mergeCollectionsById(currentState.expenses, payload.expenses),
+          materials: mergeCollectionsById(currentState.materials, payload.materials),
+          isInitialized: true,
+          lastUpdated: new Date().toISOString()
+        };
+        saveDatabaseState(mergedPayload);
+        saveStateToSupabase(mergedPayload).catch(err => {
           console.warn('[Supabase Sync Warn]:', err);
         });
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
-        res.end(JSON.stringify({ success: true, timestamp: payload.lastUpdated }));
+        res.end(JSON.stringify({ success: true, timestamp: mergedPayload.lastUpdated, state: mergedPayload }));
       } catch (err) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'JSON inválido' }));

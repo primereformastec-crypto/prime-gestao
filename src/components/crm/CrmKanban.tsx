@@ -54,7 +54,7 @@ export const CrmKanban: React.FC = () => {
     { id: 'visita_realizada', title: 'Visita Realizada', color: 'border-violet-500', headerBg: 'bg-violet-50 text-violet-800', badgeColor: 'bg-violet-600 text-white' },
     { id: 'orcamento_enviado', title: 'Orçamento Enviado', color: 'border-cyan-500', headerBg: 'bg-cyan-50 text-cyan-800', badgeColor: 'bg-cyan-600 text-white' },
     { id: 'negociacao', title: 'Negociação', color: 'border-amber-500', headerBg: 'bg-amber-100/70 text-amber-900', badgeColor: 'bg-amber-600 text-white' },
-    { id: 'vendido', title: 'Vendido (Gera Obra)', color: 'border-emerald-500', headerBg: 'bg-emerald-50 text-emerald-800', badgeColor: 'bg-emerald-600 text-white' },
+    { id: 'vendido', title: 'Virou Obra', color: 'border-emerald-500', headerBg: 'bg-emerald-50 text-emerald-800', badgeColor: 'bg-emerald-600 text-white' },
     { id: 'perdido', title: 'Perdido / Não Atende', color: 'border-rose-400', headerBg: 'bg-rose-50 text-rose-800', badgeColor: 'bg-rose-600 text-white' },
   ];
 
@@ -177,7 +177,7 @@ export const CrmKanban: React.FC = () => {
     });
     setLeadToConvert(null);
     setMatchingExistingProject(null);
-    if (confirm(`✓ Sucesso! Obra ${project.id} criada. Deseja abrir a página da obra agora?`)) {
+    if (confirm(`✓ Sucesso! O lead "${leadToConvert.name}" virou Obra (${project.id}) e foi adicionado à Carteira de Clientes. Deseja abrir a página da obra agora?`)) {
       setSelectedProjectId(project.id);
       setActiveTab('obras');
     }
@@ -368,13 +368,13 @@ export const CrmKanban: React.FC = () => {
 
         <div className="prime-card p-3.5 border-l-4 border-l-emerald-500 bg-emerald-50/20">
           <span className="text-[11px] text-emerald-900 font-bold block flex items-center gap-1">
-            <span>🏆 Total Vendido</span>
+            <span>🏆 Virou Obra</span>
           </span>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-xl font-black text-emerald-600">€ {wonValueTotal.toLocaleString('pt-PT')}</span>
           </div>
           <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">
-            {wonCount} obras fechadas
+            {wonCount} obras & clientes gerados
           </span>
         </div>
 
@@ -1017,7 +1017,7 @@ export const CrmKanban: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-emerald-200" />
                 <h3 className="font-bold text-sm tracking-wide">
-                  Vitória Comercial! Converter Lead em Obra Oficial
+                  Vitória Comercial! Virou Obra (Criar Obra & Carteira de Clientes)
                 </h3>
               </div>
               <button 
@@ -1132,7 +1132,7 @@ export const CrmKanban: React.FC = () => {
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-md"
                 >
                   <Building2 className="w-4 h-4" />
-                  <span>Confirmar e Criar Obra Oficial</span>
+                  <span>Confirmar Virou Obra (Criar Obra & Cliente)</span>
                 </button>
               </div>
             </div>

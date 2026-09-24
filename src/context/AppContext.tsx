@@ -470,7 +470,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           changeOrders,
           dailyLogs,
           photos,
-          documents
         })
       }).catch(() => {});
     }, 800);
@@ -481,6 +480,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     materials, expenses, fixedExpenses, invoices, payments, milestones,
     changeOrders, dailyLogs, photos, documents
   ]);
+
+  // Periodic background refresh from central server so team members automatically see each other's registered clients, works, and leads
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch('/api/state')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.isInitialized) {
+            if (data.clients && data.clients.length > 0) {
+              setClients(prev => {
+                const existingMap = new Map(prev.map(c => [c.id, c]));
+                let changed = false;
+                data.clients.forEach((rc: Client) => {
+                  if (!existingMap.has(rc.id)) {
+                    existingMap.set(rc.id, rc);
+                    changed = true;
+                  }
+                });
+                return changed ? Array.from(existingMap.values()) : prev;
+              });
+            }
+
+            if (data.projects && data.projects.length > 0) {
+              setProjects(prev => {
+                const existingMap = new Map(prev.map(p => [p.id, p]));
+                let changed = false;
+                data.projects.forEach((rp: Project) => {
+                  if (!existingMap.has(rp.id)) {
+                    existingMap.set(rp.id, rp);
+                    changed = true;
+                  }
+                });
+                return changed ? Array.from(existingMap.values()) : prev;
+              });
+            }
+
+            if (data.leads && data.leads.length > 0) {
+              setLeads(prev => {
+                const existingMap = new Map(prev.map(l => [l.id, l]));
+                let changed = false;
+                data.leads.forEach((rl: Lead) => {
+                  const local = existingMap.get(rl.id);
+                  if (!local) {
+                    existingMap.set(rl.id, rl);
+                    changed = true;
+                  } else if (
+                    local.status !== rl.status || 
+                    local.estimatedValue !== rl.estimatedValue || 
+                    local.finalValue !== rl.finalValue ||
+                    local.notes !== rl.notes
+                  ) {
+                    existingMap.set(rl.id, { ...local, ...rl });
+                    changed = true;
+                  }
+                });
+                return changed ? Array.from(existingMap.values()) : prev;
+              });
+            }
+          }
+        })
+        .catch(() => {});
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Auditor helper
   const logAudit = (entityType: AuditLog['entityType'], entityId: string, action: string, details: string) => {
@@ -796,23 +860,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const effectiveCity = (!lead.city || lead.city.includes('Lisboa')) ? 'Barcelona' : lead.city;
 
-    // 1. Create or match Client
-    let client = clients.find(c => c.email.toLowerCase() === lead.email.toLowerCase() || c.phone === lead.phone);
+    // 1. Create or match Client (Strict non-empty matching to ensure unique clients)
+    const cleanLeadPhone = lead.phone ? lead.phone.replace(/\D/g, '') : '';
+    let client = clients.find(c => {
+      const cleanCPhone = c.phone ? c.phone.replace(/\D/g, '') : '';
+      const phoneMatch = cleanLeadPhone.length >= 8 && cleanCPhone.length >= 8 && (cleanLeadPhone === cleanCPhone || cleanLeadPhone.endsWith(cleanCPhone) || cleanCPhone.endsWith(cleanLeadPhone));
+      const emailMatch = Boolean(lead.email?.trim() && c.email?.trim() && lead.email.trim().toLowerCase() === c.email.trim().toLowerCase());
+      return phoneMatch || emailMatch;
+    });
+
     if (!client) {
       const clientCount = clients.length + 1;
-      const clientId = `CLI-${String(clientCount).padStart(4, '0')}`;
+      const clientId = `CLI-${String(clientCount).padStart(3, '0')}`;
       client = {
         id: clientId,
         name: lead.name,
         phone: lead.phone,
-        email: lead.email,
+        email: lead.email || '',
         address: lead.address || effectiveCity,
         city: effectiveCity,
         createdAt: new Date().toISOString().slice(0, 10),
-        notes: `Convertido do Lead ${lead.id}`
+        notes: `Convertido do Lead ${lead.id} (Virou Obra)`,
+        totalSpent: customOptions?.contractValue !== undefined ? customOptions.contractValue : (lead.finalValue || lead.estimatedValue || 0)
       };
       setClients(prev => [...prev, client!]);
-      logAudit('lead', clientId, 'Criação de Cliente', `Cliente criado via conversão de lead: ${client.name}`);
+      logAudit('lead', clientId, 'Criação de Cliente', `Cliente criado via conversão de lead (Virou Obra): ${client.name}`);
     }
 
     // 2. Create Project

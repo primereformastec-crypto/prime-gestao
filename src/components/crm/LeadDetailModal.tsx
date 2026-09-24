@@ -105,7 +105,7 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
     { id: 'visita_realizada', label: 'Visita Realizada' },
     { id: 'orcamento_enviado', label: 'Orçamento Enviado' },
     { id: 'negociacao', label: 'Negociação' },
-    { id: 'vendido', label: 'Vendido' },
+    { id: 'vendido', label: 'Virou Obra' },
     { id: 'perdido', label: 'Perdido' },
   ];
 
@@ -181,7 +181,7 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md active:scale-98"
               >
                 <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>CRIAR CLIENTE & OBRA</span>
+                <span>VIROU OBRA (CRIAR CLIENTE & OBRA)</span>
               </button>
             )}
 
@@ -209,7 +209,17 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
                   return (
                     <button
                       key={s.id}
-                      onClick={() => moveLeadStatus(lead.id, s.id)}
+                      onClick={() => {
+                        if (s.id === 'vendido') {
+                          if (!lead.projectId) {
+                            handleConvert();
+                          } else {
+                            moveLeadStatus(lead.id, 'vendido');
+                          }
+                        } else {
+                          moveLeadStatus(lead.id, s.id);
+                        }
+                      }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                         isCurrent 
                           ? (s.id === 'vendido' 
