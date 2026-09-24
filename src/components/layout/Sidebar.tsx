@@ -8,6 +8,8 @@ import {
   Briefcase, Wrench, Wallet, PieChart, LogOut, X, History, Hammer
 } from 'lucide-react';
 
+import { SecurityCenterModal } from '../common/SecurityCenterModal';
+
 interface NavSection {
   id: string;
   title: string;
@@ -27,6 +29,8 @@ export const Sidebar: React.FC = () => {
     activeTab, setActiveTab, currentUser, leads, projects, 
     invoices, shifts, employees, logout, mobileMenuOpen, setMobileMenuOpen 
   } = useApp();
+
+  const [showSecurityCenter, setShowSecurityCenter] = useState(false);
 
   // Badges calculations
   const newLeadsCount = leads.filter(l => !l.isLegacy && l.status === 'novo_lead').length;
@@ -272,16 +276,28 @@ export const Sidebar: React.FC = () => {
 
       {/* Footer info & Logout */}
       <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2 shrink-0">
-        <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-800/40 border border-slate-800">
+        <div 
+          onClick={() => setShowSecurityCenter(true)}
+          className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/40 cursor-pointer transition-all group"
+          title="Abrir Central de Segurança & Cópias de Segurança (Backups)"
+        >
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
             <div className="min-w-0">
-              <p className="text-[11px] font-medium text-slate-200 truncate">PRIME Cloud Sync</p>
-              <p className="text-[9px] text-slate-400">Ligação Segura Ativa</p>
+              <p className="text-[11px] font-semibold text-slate-200 group-hover:text-white truncate flex items-center gap-1.5">
+                <span>PRIME Cloud Sync</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                  Protegido
+                </span>
+              </p>
+              <p className="text-[9px] text-slate-400 group-hover:text-sky-400 transition-colors">Segurança & Backups Ativos</p>
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={(e) => {
+              e.stopPropagation();
+              logout();
+            }}
             title="Terminar Sessão Corporativa"
             className="p-1.5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded-md transition-colors"
           >
@@ -314,6 +330,12 @@ export const Sidebar: React.FC = () => {
           </aside>
         </div>
       )}
+
+      {/* Modal Central de Segurança & Backups */}
+      <SecurityCenterModal 
+        isOpen={showSecurityCenter} 
+        onClose={() => setShowSecurityCenter(false)} 
+      />
     </>
   );
 };

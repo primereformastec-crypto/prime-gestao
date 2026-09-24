@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
+import { SecurityCenterModal } from '../common/SecurityCenterModal';
 import { 
   Search, Bell, Plus, Shield, Briefcase, DollarSign, 
   HardHat, User as UserIcon, CheckCircle2, AlertTriangle, 
-  Clock, X, Check, FileText, Hammer, Package, LogOut, Menu 
+  Clock, X, Check, FileText, Hammer, Package, LogOut, Menu,
+  ShieldCheck
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -17,6 +19,7 @@ export const Header: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [showSecurityCenter, setShowSecurityCenter] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -65,6 +68,16 @@ export const Header: React.FC = () => {
 
       {/* Right controls */}
       <div className="flex items-center gap-2 md:gap-3">
+        {/* Security Shield & Backup Button */}
+        <button
+          onClick={() => setShowSecurityCenter(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-2xs hover:scale-102 cursor-pointer"
+          title="Central de Segurança & Cópias de Segurança (Backups)"
+        >
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <span className="hidden sm:inline">Proteção Ativa</span>
+        </button>
+
         {/* Quick Action Button */}
         <div className="relative">
           <button
@@ -251,6 +264,12 @@ export const Header: React.FC = () => {
           <span className="hidden md:inline">Sair</span>
         </button>
       </div>
+
+      {/* Modal Central de Segurança e Backups */}
+      <SecurityCenterModal 
+        isOpen={showSecurityCenter} 
+        onClose={() => setShowSecurityCenter(false)} 
+      />
     </header>
   );
 };
