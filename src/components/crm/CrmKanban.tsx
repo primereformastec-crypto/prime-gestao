@@ -338,7 +338,7 @@ export const CrmKanban: React.FC = () => {
       {/* KPI Triage Metrics with Monetary Values */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="prime-card p-3.5 border-l-4 border-l-blue-500">
-          <span className="text-[11px] text-slate-500 font-semibold block">1º Contacto (Meninas)</span>
+          <span className="text-[11px] text-slate-500 font-semibold block">1º Contacto</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-blue-600">{uncontactedCount}</span>
             <span className="text-[10px] text-slate-400">por falar</span>

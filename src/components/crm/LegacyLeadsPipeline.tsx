@@ -253,7 +253,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
             Pipeline de Leads Antigos (Triagem Alexandre)
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Triagem rápida com botões de avanço ◀ ▶ nos cards. Quem não for contactado fica na 1ª coluna para as meninas ligarem.
+            Triagem rápida com botões de avanço ◀ ▶ nos cards. Quem não for contactado fica na 1ª coluna para primeiro contacto.
           </p>
         </div>
 
@@ -300,7 +300,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
       {/* KPI Triage Metrics with Monetary Values */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="prime-card p-3.5 border-l-4 border-l-blue-500">
-          <span className="text-[11px] text-slate-500 font-semibold block">1º Contacto (Meninas)</span>
+          <span className="text-[11px] text-slate-500 font-semibold block">1º Contacto</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-blue-600">{uncontactedCount}</span>
             <span className="text-[10px] text-slate-400">por falar</span>
@@ -510,7 +510,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
           <div>
             <h3 className="font-bold text-slate-800 text-base">Ainda não importou os 11 ficheiros do Meta Ads</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-              Carregue os ficheiros Excel de Barcelona para que o Alexandre possa triar os leads e as meninas realizarem os contactos.
+              Carregue os ficheiros Excel de Barcelona para que o Alexandre possa triar os leads e a equipa realizar os contactos.
             </p>
           </div>
           <button
