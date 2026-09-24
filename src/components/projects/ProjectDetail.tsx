@@ -6,7 +6,7 @@ import {
   Clock, DollarSign, TrendingUp, AlertTriangle, Plus, FileText, 
   Package, Receipt, ShieldCheck, Flag, CheckSquare, Sparkles, 
   Trash2, Image, UploadCloud, ChevronRight, Eye, Users2,
-  HardHat, Wallet, CreditCard, Camera
+  HardHat, Wallet, CreditCard, Camera, Edit3, MessageCircle, Check
 } from 'lucide-react';
 
 interface Props {
@@ -36,6 +36,58 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
   >('resumo');
 
   // Modals state
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
+  const [projectEditForm, setProjectEditForm] = useState({
+    title: '',
+    clientId: '',
+    serviceType: '',
+    city: 'Barcelona',
+    address: '',
+    managerId: '',
+    startDate: '',
+    plannedEndDate: '',
+    contractValue: 0,
+    status: 'em_execucao' as any,
+    notes: ''
+  });
+
+  const handleOpenEditProject = () => {
+    if (!project) return;
+    setProjectEditForm({
+      title: project.title || '',
+      clientId: project.clientId || '',
+      serviceType: project.serviceType || 'Reforma integral',
+      city: project.city || 'Barcelona',
+      address: project.address || '',
+      managerId: project.managerId || 'Ricardo Silva',
+      startDate: project.startDate || '',
+      plannedEndDate: project.plannedEndDate || '',
+      contractValue: project.contractValue || 0,
+      status: project.status || 'em_execucao',
+      notes: project.notes || ''
+    });
+    setShowEditProjectModal(true);
+  };
+
+  const handleSaveProjectEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!project) return;
+    updateProject(project.id, {
+      title: projectEditForm.title.trim(),
+      clientId: projectEditForm.clientId,
+      serviceType: projectEditForm.serviceType,
+      city: projectEditForm.city.trim() || 'Barcelona',
+      address: projectEditForm.address.trim(),
+      managerId: projectEditForm.managerId,
+      startDate: projectEditForm.startDate,
+      plannedEndDate: projectEditForm.plannedEndDate,
+      contractValue: Number(projectEditForm.contractValue) || 0,
+      status: projectEditForm.status,
+      notes: projectEditForm.notes.trim()
+    });
+    setShowEditProjectModal(false);
+  };
+
   const [showAddShiftModal, setShowAddShiftModal] = useState(false);
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
@@ -369,21 +421,41 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
               OB
             </div>
             <div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight">{project.title}</h1>
                 <span className="font-mono text-xs font-black text-sky-700 bg-sky-100 border border-sky-200 px-2 py-0.5 rounded">
                   {project.id}
                 </span>
+                <button
+                  onClick={handleOpenEditProject}
+                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-2xs hover:scale-102 cursor-pointer ml-1"
+                  title="Editar informações e planeamento da obra"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Editar Obra</span>
+                </button>
               </div>
-              <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-500 mt-1">
-                <span className="flex items-center gap-1 text-slate-700 font-semibold">
+              <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-slate-500 mt-1.5">
+                <span className="flex items-center gap-1.5 text-slate-700 font-semibold">
                   <User className="w-3.5 h-3.5 text-slate-400" />
-                  {client?.name || 'Cliente'} ({client?.id})
+                  <span>{client?.name || 'Cliente'} ({client?.id || 'Sem código'})</span>
+                  {client?.phone && client.phone.replace(/[^0-9]/g, '').length >= 6 && (
+                    <a
+                      href={`https://wa.me/${client.phone.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded text-[10px] font-bold transition-all shadow-2xs ml-0.5"
+                      title="Abrir WhatsApp do Cliente"
+                    >
+                      <MessageCircle className="w-2.5 h-2.5 text-emerald-600" />
+                      <span>{client.phone}</span>
+                    </a>
+                  )}
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  {project.address}
+                  {project.address} ({project.city || 'Barcelona'})
                 </span>
                 <span>•</span>
                 <span>Gestor: <strong>{project.managerId}</strong></span>
@@ -1667,6 +1739,191 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
               <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
                 <button type="button" onClick={() => setShowAddDailyLogModal(false)} className="px-3.5 py-1.5 text-slate-600">Cancelar</button>
                 <button type="submit" className="px-4 py-1.5 bg-sky-600 text-white rounded-lg font-bold">Gravar Diário</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR INFORMAÇÕES DA OBRA */}
+      {showEditProjectModal && project && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-8">
+            <div className="p-5 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-amber-400" />
+                  Editar Informações da Obra ({project.id})
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Atualize título, morada, datas, orçamento contratado e dados gerais da obra.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowEditProjectModal(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProjectEdit} className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Título / Nome da Obra *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Reforma Integral T3 - Carrer d'Aragó"
+                  value={projectEditForm.title}
+                  onChange={e => setProjectEditForm({ ...projectEditForm, title: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Cliente Associado</label>
+                  <select
+                    value={projectEditForm.clientId}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, clientId: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  >
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tipo de Serviço / Obra</label>
+                  <select
+                    value={projectEditForm.serviceType}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, serviceType: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="Reforma integral">Reforma integral</option>
+                    <option value="Cozinha e Sala">Cozinha e Sala</option>
+                    <option value="Banheiro / Casa de Banho">Banheiro / Casa de Banho</option>
+                    <option value="Instalação de Ar Condicionado">Instalação de Ar Condicionado</option>
+                    <option value="Termoelétrico / Aquecimento">Termoelétrico / Aquecimento</option>
+                    <option value="Pintura e Acabamentos">Pintura e Acabamentos</option>
+                    <option value="Eletricidade e Canalização">Eletricidade e Canalização</option>
+                    <option value="Outro Serviço">Outro Serviço</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    placeholder="Barcelona"
+                    value={projectEditForm.city}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, city: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Gestor Responsável</label>
+                  <input
+                    type="text"
+                    value={projectEditForm.managerId}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, managerId: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Morada / Endereço da Obra</label>
+                <input
+                  type="text"
+                  placeholder="Rua, número, andar, porta..."
+                  value={projectEditForm.address}
+                  onChange={e => setProjectEditForm({ ...projectEditForm, address: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Valor Contratado (€) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={projectEditForm.contractValue || ''}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, contractValue: parseFloat(e.target.value) || 0 })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Data de Início</label>
+                  <input
+                    type="date"
+                    value={projectEditForm.startDate}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, startDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Data Prevista de Fim</label>
+                  <input
+                    type="date"
+                    value={projectEditForm.plannedEndDate}
+                    onChange={e => setProjectEditForm({ ...projectEditForm, plannedEndDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Status da Obra</label>
+                <select
+                  value={projectEditForm.status}
+                  onChange={e => setProjectEditForm({ ...projectEditForm, status: e.target.value as any })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                >
+                  <option value="nao_iniciada">Não Iniciada</option>
+                  <option value="agendada">Agendada</option>
+                  <option value="em_execucao">Em Execução</option>
+                  <option value="pausada">Pausada</option>
+                  <option value="concluida">Concluída</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Observações e Escopo</label>
+                <textarea
+                  rows={2}
+                  placeholder="Detalhes sobre o escopo acordado, restrições do condomínio, etc."
+                  value={projectEditForm.notes}
+                  onChange={e => setProjectEditForm({ ...projectEditForm, notes: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditProjectModal(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Guardar Alterações da Obra</span>
+                </button>
               </div>
             </form>
           </div>

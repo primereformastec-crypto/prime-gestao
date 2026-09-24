@@ -64,7 +64,7 @@ export const ProjectsList: React.FC = () => {
     title: '',
     serviceType: 'Reforma integral',
     address: '',
-    city: 'Lisboa',
+    city: 'Barcelona',
     managerId: 'Ricardo Silva',
     startDate: '2026-10-01',
     plannedEndDate: '2026-11-30',

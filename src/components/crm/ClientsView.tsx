@@ -4,16 +4,81 @@ import { Client } from '../../types';
 import { 
   Users, UserCheck, Phone, Mail, MapPin, Building2, 
   FileText, Plus, Search, Euro, Calendar, ArrowRight,
-  CreditCard, CheckCircle2, Clock, AlertTriangle, LayoutList, LayoutGrid
+  CreditCard, CheckCircle2, Clock, AlertTriangle, LayoutList, LayoutGrid,
+  Edit3, Trash2, MessageCircle, ExternalLink, Check
 } from 'lucide-react';
 
 export const ClientsView: React.FC = () => {
-  const { clients, projects, invoices, payments, addClient, setSelectedProjectId, setActiveTab } = useApp();
+  const { clients, projects, invoices, payments, addClient, updateClient, deleteClient, setSelectedProjectId, setActiveTab } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(clients[0] || null);
   const [viewMode, setViewMode] = useState<'sheet' | 'table'>('sheet');
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Modal e estado para edição de cliente
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+  const [editClientForm, setEditClientForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    nif: '',
+    address: '',
+    city: 'Barcelona',
+    notes: ''
+  });
+
+  const openEditModal = (client: Client) => {
+    setClientToEdit(client);
+    setEditClientForm({
+      name: client.name || '',
+      phone: client.phone || '',
+      email: client.email || '',
+      nif: client.nif || '',
+      address: client.address || '',
+      city: client.city || 'Barcelona',
+      notes: client.notes || ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientToEdit) return;
+    if (!editClientForm.name.trim() || !editClientForm.phone.trim()) {
+      alert('Nome e Telefone/WhatsApp são campos obrigatórios.');
+      return;
+    }
+
+    const updates: Partial<Client> = {
+      name: editClientForm.name.trim(),
+      phone: editClientForm.phone.trim(),
+      email: editClientForm.email.trim(),
+      nif: editClientForm.nif.trim() || undefined,
+      address: editClientForm.address.trim(),
+      city: editClientForm.city.trim() || 'Barcelona',
+      notes: editClientForm.notes.trim()
+    };
+
+    updateClient(clientToEdit.id, updates);
+    if (selectedClient?.id === clientToEdit.id) {
+      setSelectedClient({ ...clientToEdit, ...updates });
+    }
+    setShowEditModal(false);
+    setClientToEdit(null);
+  };
+
+  const handleDeleteClient = (client: Client) => {
+    if (window.confirm(`Tem a certeza que deseja eliminar o cliente "${client.name}" (${client.id})? Esta ação removerá o registo da carteira.`)) {
+      deleteClient(client.id);
+      if (selectedClient?.id === client.id) {
+        setSelectedClient(null);
+      }
+      setShowEditModal(false);
+      setClientToEdit(null);
+    }
+  };
 
   // Form para novo cliente
   const [newClientForm, setNewClientForm] = useState({
@@ -22,7 +87,7 @@ export const ClientsView: React.FC = () => {
     email: '',
     nif: '',
     address: '',
-    city: 'Lisboa',
+    city: 'Barcelona',
     notes: ''
   });
 
@@ -36,7 +101,7 @@ export const ClientsView: React.FC = () => {
       email: newClientForm.email.trim(),
       nif: newClientForm.nif.trim() || undefined,
       address: newClientForm.address.trim(),
-      city: newClientForm.city.trim(),
+      city: newClientForm.city.trim() || 'Barcelona',
       notes: newClientForm.notes.trim()
     });
 
@@ -48,10 +113,15 @@ export const ClientsView: React.FC = () => {
       email: '',
       nif: '',
       address: '',
-      city: 'Lisboa',
+      city: 'Barcelona',
       notes: ''
     });
   };
+
+  // Garante que o cliente selecionado reflete as atualizações mais recentes em tempo real
+  const currentClient = selectedClient 
+    ? (clients.find(c => c.id === selectedClient.id) || selectedClient) 
+    : (clients[0] || null);
 
   const filteredClients = clients.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -61,9 +131,9 @@ export const ClientsView: React.FC = () => {
     (c.nif && c.nif.includes(searchQuery))
   );
 
-  const clientProjects = selectedClient ? projects.filter(p => p.clientId === selectedClient.id) : [];
-  const clientInvoices = selectedClient ? invoices.filter(i => i.clientId === selectedClient.id) : [];
-  const clientPayments = selectedClient ? payments.filter(p => p.clientId === selectedClient.id) : [];
+  const clientProjects = currentClient ? projects.filter(p => p.clientId === currentClient.id) : [];
+  const clientInvoices = currentClient ? invoices.filter(i => i.clientId === currentClient.id) : [];
+  const clientPayments = currentClient ? payments.filter(p => p.clientId === currentClient.id) : [];
 
   const totalContracted = clientProjects.reduce((s, p) => s + p.contractValue, 0);
   const totalBilled = clientInvoices.reduce((s, i) => s + i.totalAmount, 0);
@@ -131,72 +201,121 @@ export const ClientsView: React.FC = () => {
             </div>
 
             <div className="divide-y divide-slate-100 max-h-[65vh] overflow-y-auto space-y-1">
-              {filteredClients.map(client => {
-                const isSelected = selectedClient?.id === client.id;
-                const pCount = projects.filter(p => p.clientId === client.id).length;
-                const cInvoices = invoices.filter(i => i.clientId === client.id);
-                const cPayments = payments.filter(p => p.clientId === client.id);
-                const billed = cInvoices.reduce((s, i) => s + i.totalAmount, 0);
-                const paid = cPayments.reduce((s, p) => s + p.amount, 0);
-                const pending = Math.max(0, billed - paid);
+              {filteredClients.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 italic">
+                  Nenhum cliente encontrado.
+                </div>
+              ) : (
+                filteredClients.map(client => {
+                  const isSelected = currentClient?.id === client.id;
+                  const pCount = projects.filter(p => p.clientId === client.id).length;
+                  const cInvoices = invoices.filter(i => i.clientId === client.id);
+                  const cPayments = payments.filter(p => p.clientId === client.id);
+                  const billed = cInvoices.reduce((s, i) => s + i.totalAmount, 0);
+                  const paid = cPayments.reduce((s, p) => s + p.amount, 0);
+                  const pending = Math.max(0, billed - paid);
 
-                return (
-                  <div
-                    key={client.id}
-                    onClick={() => setSelectedClient(client)}
-                    className={`p-3 rounded-xl cursor-pointer transition-all ${
-                      isSelected ? 'bg-sky-50/80 border border-sky-200 shadow-xs' : 'hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-mono text-[10px] font-bold text-sky-700 bg-sky-100/70 px-1.5 py-0.2 rounded">
-                        {client.id}
-                      </span>
-                      <span className="text-[11px] font-semibold text-slate-500">{pCount} obra(s)</span>
+                  return (
+                    <div
+                      key={client.id}
+                      onClick={() => setSelectedClient(client)}
+                      className={`p-3 rounded-xl cursor-pointer transition-all ${
+                        isSelected ? 'bg-sky-50/80 border border-sky-200 shadow-xs' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-mono text-[10px] font-bold text-sky-700 bg-sky-100/70 px-1.5 py-0.2 rounded">
+                          {client.id}
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-500">{pCount} obra(s)</span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-900 mt-1">{client.name}</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5 truncate">{client.city || 'Barcelona'} • {client.phone}</p>
+                      {pending > 0 && (
+                        <span className="inline-block mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                          €{pending.toLocaleString('pt-PT')} pendente
+                        </span>
+                      )}
                     </div>
-                    <h4 className="text-xs font-bold text-slate-900 mt-1">{client.name}</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5 truncate">{client.city} • {client.phone}</p>
-                    {pending > 0 && (
-                      <span className="inline-block mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-                        €{pending.toLocaleString('pt-PT')} pendente
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
           {/* Right Col: Client Sheet */}
-          {selectedClient && (
+          {currentClient ? (
             <div className="lg:col-span-2 space-y-6">
               {/* Client Top Card */}
               <div className="prime-card p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-bold text-slate-900">{selectedClient.name}</h2>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h2 className="text-xl font-bold text-slate-900">{currentClient.name}</h2>
                       <span className="font-mono text-xs font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded">
-                        {selectedClient.id}
+                        {currentClient.id}
                       </span>
+                      <button
+                        onClick={() => openEditModal(currentClient)}
+                        className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs hover:scale-102 cursor-pointer"
+                        title="Editar dados do cliente (WhatsApp, Morada, NIF...)"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Editar Cliente</span>
+                      </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mt-3 text-xs text-slate-600">
-                      <p className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-400" />
-                        <a href={`tel:${selectedClient.phone}`} className="hover:text-sky-600 font-medium">{selectedClient.phone}</a>
-                      </p>
-                      <p className="flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-slate-400" />
-                        <a href={`mailto:${selectedClient.email}`} className="hover:text-sky-600 truncate">{selectedClient.email}</a>
-                      </p>
-                      <p className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{selectedClient.address}, {selectedClient.city}</span>
-                      </p>
-                      <p className="flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-slate-400" />
-                        <span>NIF: <strong>{selectedClient.nif || 'Não informado'}</strong></span>
-                      </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-3.5 text-xs text-slate-600">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        {currentClient.phone ? (
+                          <a href={`tel:${currentClient.phone}`} className="hover:text-sky-600 font-bold text-slate-900">
+                            {currentClient.phone}
+                          </a>
+                        ) : (
+                          <span className="text-rose-500 font-semibold italic">Sem telefone</span>
+                        )}
+                        {currentClient.phone && currentClient.phone.replace(/[^0-9]/g, '').length >= 6 ? (
+                          <a
+                            href={`https://wa.me/${currentClient.phone.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded text-[10px] font-bold transition-all ml-1 shadow-2xs"
+                            title="Abrir WhatsApp"
+                          >
+                            <MessageCircle className="w-3 h-3 text-emerald-600" />
+                            <span>WhatsApp</span>
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => openEditModal(currentClient)}
+                            className="text-[10px] text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-bold ml-1 cursor-pointer"
+                          >
+                            + Inserir WhatsApp
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        {currentClient.email ? (
+                          <a href={`mailto:${currentClient.email}`} className="hover:text-sky-600 truncate font-medium">
+                            {currentClient.email}
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 italic">Sem email</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{currentClient.address ? `${currentClient.address}, ` : ''}<strong>{currentClient.city || 'Barcelona'}</strong></span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>NIF: <strong>{currentClient.nif || 'Não informado'}</strong></span>
+                      </div>
                     </div>
                   </div>
 
@@ -214,10 +333,10 @@ export const ClientsView: React.FC = () => {
                   </div>
                 </div>
 
-                {selectedClient.notes && (
+                {currentClient.notes && (
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
                     <span className="font-bold text-slate-800">Observações: </span>
-                    {selectedClient.notes}
+                    {currentClient.notes}
                   </div>
                 )}
               </div>
@@ -304,6 +423,10 @@ export const ClientsView: React.FC = () => {
                 )}
               </div>
             </div>
+          ) : (
+            <div className="lg:col-span-2 prime-card p-12 text-center text-slate-400 italic">
+              Nenhum cliente selecionado. Selecione um cliente da lista à esquerda ou clique em "+ Novo Cliente".
+            </div>
           )}
         </div>
       ) : (
@@ -353,15 +476,25 @@ export const ClientsView: React.FC = () => {
                         {pending > 0 ? `€${pending.toLocaleString('pt-PT')}` : '€0'}
                       </td>
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => {
-                            setSelectedClient(c);
-                            setViewMode('sheet');
-                          }}
-                          className="px-2.5 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-lg font-bold text-xs"
-                        >
-                          Ver Ficha
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedClient(c);
+                              setViewMode('sheet');
+                            }}
+                            className="px-2.5 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-lg font-bold text-xs cursor-pointer transition-colors"
+                          >
+                            Ver Ficha
+                          </button>
+                          <button
+                            onClick={() => openEditModal(c)}
+                            className="p-1 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Editar Cliente"
+                          >
+                            <Edit3 className="w-3 h-3 text-amber-600" />
+                            <span>Editar</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -479,6 +612,162 @@ export const ClientsView: React.FC = () => {
                 >
                   Cadastrar Cliente
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR DADOS DO CLIENTE */}
+      {showEditModal && clientToEdit && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-amber-400" />
+                  Editar Dados do Cliente
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                  {clientToEdit.name} • {clientToEdit.id}
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowEditModal(false);
+                  setClientToEdit(null);
+                }} 
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateClient} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Nome Completo do Cliente *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Nome do cliente"
+                  value={editClientForm.name}
+                  onChange={e => setEditClientForm({ ...editClientForm, name: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700">Telemóvel / WhatsApp *</label>
+                    {editClientForm.phone && editClientForm.phone.replace(/[^0-9]/g, '').length >= 6 && (
+                      <a
+                        href={`https://wa.me/${editClientForm.phone.replace(/[^0-9]/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-emerald-600 hover:underline flex items-center gap-0.5 font-bold"
+                      >
+                        <MessageCircle className="w-2.5 h-2.5" />
+                        Testar
+                      </a>
+                    )}
+                  </div>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="+34 600 000 000"
+                    value={editClientForm.phone}
+                    onChange={e => setEditClientForm({ ...editClientForm, phone: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none font-medium"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Ex: +34 612 345 678</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="cliente@email.com"
+                    value={editClientForm.email}
+                    onChange={e => setEditClientForm({ ...editClientForm, email: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">NIF (Número Fiscal / NIE)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Y1234567X ou 12345678Z"
+                    value={editClientForm.nif}
+                    onChange={e => setEditClientForm({ ...editClientForm, nif: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    placeholder="Barcelona"
+                    value={editClientForm.city}
+                    onChange={e => setEditClientForm({ ...editClientForm, city: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Morada / Endereço Completo</label>
+                <input
+                  type="text"
+                  placeholder="Rua, número, andar, porta, código postal"
+                  value={editClientForm.address}
+                  onChange={e => setEditClientForm({ ...editClientForm, address: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Notas / Observações</label>
+                <textarea
+                  rows={2}
+                  placeholder="Informações adicionais sobre o cliente, preferências, etc."
+                  value={editClientForm.notes}
+                  onChange={e => setEditClientForm({ ...editClientForm, notes: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteClient(clientToEdit)}
+                  className="px-3 py-2 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setClientToEdit(null);
+                    }}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Guardar Alterações</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

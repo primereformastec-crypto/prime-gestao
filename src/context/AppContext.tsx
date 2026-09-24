@@ -74,6 +74,7 @@ interface AppContextType {
 
   addClient: (client: Omit<Client, 'id' | 'createdAt'>) => Client;
   updateClient: (id: string, updates: Partial<Client>) => void;
+  deleteClient: (id: string) => void;
 
   addProject: (project: Omit<Project, 'id' | 'createdAt'>) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -940,6 +941,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('client', id, 'Atualização de Cliente', `Dados do cliente ${id} atualizados.`);
   };
 
+  const deleteClient = (id: string) => {
+    setClients(prev => prev.filter(c => c.id !== id));
+    logAudit('client', id, 'Eliminação de Cliente', `Cliente ${id} removido.`);
+  };
+
   // ===================== PROJECT STAGES & SUBTASKS =====================
   const addProject = (projectData: Omit<Project, 'id' | 'createdAt'>): Project => {
     const projectCount = projects.length + 1;
@@ -1702,6 +1708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       convertLeadToProjectAndClient,
       addClient,
       updateClient,
+      deleteClient,
       addProject,
       updateProject,
       deleteProject,
