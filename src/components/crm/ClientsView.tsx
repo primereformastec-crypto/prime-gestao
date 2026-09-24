@@ -288,11 +288,10 @@ export const ClientsView: React.FC = () => {
                       </button>
                       <button
                         onClick={() => openDeleteModal(currentClient)}
-                        className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs hover:scale-102 cursor-pointer"
-                        title="Eliminar este cliente com confirmação dupla de segurança"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer ml-0.5"
+                        title="Eliminar cliente"
                       >
-                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                        <span>Eliminar Cliente</span>
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
@@ -527,11 +526,10 @@ export const ClientsView: React.FC = () => {
                           </button>
                           <button
                             onClick={() => openDeleteModal(c)}
-                            className="p-1 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
-                            title="Eliminar Cliente (com confirmação dupla)"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar Cliente"
                           >
-                            <Trash2 className="w-3 h-3 text-rose-600" />
-                            <span>Eliminar</span>
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -786,10 +784,10 @@ export const ClientsView: React.FC = () => {
                     setShowEditModal(false);
                     if (toDel) openDeleteModal(toDel);
                   }}
-                  className="px-3 py-2 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+                  className="text-xs text-slate-400 hover:text-rose-600 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Eliminar Cliente...</span>
+                  <span>Eliminar este cliente...</span>
                 </button>
 
                 <div className="flex items-center gap-2">
