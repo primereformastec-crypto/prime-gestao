@@ -7,6 +7,7 @@ import {
   LayoutGrid, List, KanbanSquare, ArrowRight, Percent,
   Archive, RotateCcw, Award, Check
 } from 'lucide-react';
+import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
 
 export const ProjectsList: React.FC = () => {
   const { 
@@ -58,7 +59,7 @@ export const ProjectsList: React.FC = () => {
     cancelada: { label: 'Cancelada', color: 'bg-rose-50 text-rose-700 border-rose-200' }
   };
 
-  // Quick new project form
+  // Quick new project form - contractValue em formato texto para permitir digitação de 0, vírgula e cêntimos
   const [newProjectForm, setNewProjectForm] = useState({
     clientId: clients[0]?.id || '',
     title: '',
@@ -68,7 +69,7 @@ export const ProjectsList: React.FC = () => {
     managerId: 'Ricardo Silva',
     startDate: '2026-10-01',
     plannedEndDate: '2026-11-30',
-    contractValue: 35000,
+    contractValue: '0',
     status: 'agendada' as ProjectStatus,
     notes: ''
   });
@@ -85,7 +86,7 @@ export const ProjectsList: React.FC = () => {
       managerId: newProjectForm.managerId,
       startDate: newProjectForm.startDate,
       plannedEndDate: newProjectForm.plannedEndDate,
-      contractValue: Number(newProjectForm.contractValue),
+      contractValue: parseCurrencyInput(newProjectForm.contractValue),
       status: newProjectForm.status,
       progressPercent: 0,
       notes: newProjectForm.notes
@@ -279,14 +280,14 @@ export const ProjectsList: React.FC = () => {
                   <div>
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block">Valor Contrato</span>
                     <span className="font-extrabold text-xs text-slate-900">
-                      €{summary.totalContractValue.toLocaleString('pt-PT')}
+                      {formatCurrency(summary.totalContractValue)}
                     </span>
                   </div>
 
                   <div className="text-right">
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block">Margem {mainTab === 'archived' ? 'Final' : 'Realizada'}</span>
                     <div className="flex items-center gap-1 font-bold text-xs text-emerald-600">
-                      <span>€{Math.round(summary.marginAmount).toLocaleString('pt-PT')}</span>
+                      <span>{formatCurrency(summary.marginAmount)}</span>
                       <span className="text-[10px] bg-emerald-100 px-1 py-0.2 rounded font-mono">
                         {Math.round(summary.marginPercent)}%
                       </span>
@@ -375,13 +376,13 @@ export const ProjectsList: React.FC = () => {
                         {proj.progressPercent}%
                       </td>
                       <td className="py-3.5 px-4 text-right font-bold text-slate-900">
-                        €{summary.totalContractValue.toLocaleString('pt-PT')}
+                        {formatCurrency(summary.totalContractValue)}
                       </td>
                       <td className="py-3.5 px-4 text-right font-medium text-rose-600">
-                        €{Math.round(summary.totalCost).toLocaleString('pt-PT')}
+                        {formatCurrency(summary.totalCost)}
                       </td>
                       <td className="py-3.5 px-4 text-right font-bold text-emerald-600">
-                        €{Math.round(summary.marginAmount).toLocaleString('pt-PT')} ({Math.round(summary.marginPercent)}%)
+                        {formatCurrency(summary.marginAmount)} ({Math.round(summary.marginPercent)}%)
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <button
@@ -432,7 +433,7 @@ export const ProjectsList: React.FC = () => {
                         <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{proj.title}</h4>
                         <p className="text-[11px] text-slate-500 mt-0.5">{client?.name}</p>
                         <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between text-xs font-bold text-slate-800">
-                          <span>€{proj.contractValue.toLocaleString('pt-PT')}</span>
+                          <span>{formatCurrency(proj.contractValue)}</span>
                           <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                         </div>
                       </div>
@@ -521,15 +522,23 @@ export const ProjectsList: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Valor Contrato (€)</label>
-                  <input
-                    type="number"
-                    value={newProjectForm.contractValue}
-                    onChange={e => setNewProjectForm({ ...newProjectForm, contractValue: Number(e.target.value) })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-2 text-slate-400 font-bold text-xs">€</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      value={newProjectForm.contractValue}
+                      onChange={e => setNewProjectForm({ ...newProjectForm, contractValue: sanitizeCurrencyInput(e.target.value) })}
+                      className="w-full pl-7 pr-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Pode ser 0 ou cêntimos (ex: 25.388,99)
+                  </span>
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Data Início</label>

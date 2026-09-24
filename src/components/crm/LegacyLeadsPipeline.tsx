@@ -4,6 +4,7 @@ import { Lead, LeadStatus, Project, ProjectStatus } from '../../types';
 import { LeadDetailModal } from './LeadDetailModal';
 import { MetaLeadImporter } from '../importer/MetaLeadImporter';
 import { detectLeadInterest, getInterestBadge, STANDARD_INTERESTS } from '../../utils/interestDetector';
+import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
 import { 
   Plus, Search, Phone, MapPin, Calendar, Clock, 
   Euro, User, AlertCircle, CheckCircle2, 
@@ -40,7 +41,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
   const [matchingExistingProject, setMatchingExistingProject] = useState<Project | null>(null);
   const [convertStatus, setConvertStatus] = useState<ProjectStatus>('concluida');
   const [convertService, setConvertService] = useState('');
-  const [convertContractValue, setConvertContractValue] = useState<number>(0);
+  const [convertContractValue, setConvertContractValue] = useState<string>('0');
   const [convertNotes, setConvertNotes] = useState('');
 
   // Auto-correction for leads with default 'Lisboa', fake '18000', or generic/incorrect service
@@ -196,7 +197,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
     setLeadToConvert(lead);
     setMatchingExistingProject(matchedProj);
     setConvertService(lead.service || 'Reforma Geral');
-    setConvertContractValue(lead.estimatedValue || 0);
+    setConvertContractValue(String(lead.finalValue ?? lead.estimatedValue ?? 0));
     setConvertStatus('concluida'); // Default to completed historical work as requested
     setConvertNotes(lead.notes || '');
   };
@@ -206,7 +207,7 @@ export const LegacyLeadsPipeline: React.FC = () => {
     const { project } = convertLeadToProjectAndClient(leadToConvert.id, {
       status: convertStatus,
       serviceType: convertService.trim() || leadToConvert.service,
-      contractValue: Number(convertContractValue) || 0,
+      contractValue: parseCurrencyInput(convertContractValue),
       notes: convertNotes
     });
     setLeadToConvert(null);
@@ -653,12 +654,19 @@ export const LegacyLeadsPipeline: React.FC = () => {
                           <div className="flex items-center gap-1 font-bold">
                             <span className="text-xs text-slate-400">€</span>
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               placeholder="0 (A orçar)"
-                              value={(lead.finalValue || lead.estimatedValue) || ''}
-                              onChange={e => {
-                                const num = parseFloat(e.target.value) || 0;
+                              defaultValue={lead.finalValue ?? lead.estimatedValue ?? 0}
+                              key={`legacy-card-budget-${lead.id}-${lead.finalValue ?? lead.estimatedValue ?? 0}`}
+                              onBlur={e => {
+                                const num = parseCurrencyInput(e.target.value);
                                 updateLead(lead.id, { estimatedValue: num, finalValue: num });
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLInputElement).blur();
+                                }
                               }}
                               className="w-24 px-2 py-0.5 text-xs font-black text-right text-emerald-950 bg-white rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                               title="Digite o valor deste orçamento"
@@ -960,10 +968,11 @@ export const LegacyLeadsPipeline: React.FC = () => {
                       Valor Real do Contrato (€):
                     </label>
                     <input
-                      type="number"
-                      value={convertContractValue || ''}
-                      onChange={e => setConvertContractValue(Number(e.target.value))}
-                      placeholder="0 se não aplicável"
+                      type="text"
+                      inputMode="decimal"
+                      value={convertContractValue}
+                      onChange={e => setConvertContractValue(sanitizeCurrencyInput(e.target.value))}
+                      placeholder="0"
                       className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 font-mono"
                     />
                   </div>

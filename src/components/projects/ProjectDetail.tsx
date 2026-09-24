@@ -8,6 +8,7 @@ import {
   Trash2, Image, UploadCloud, ChevronRight, Eye, Users2,
   HardHat, Wallet, CreditCard, Camera, Edit3, MessageCircle, Check
 } from 'lucide-react';
+import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
 
 interface Props {
   projectId: string;
@@ -46,7 +47,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
     managerId: '',
     startDate: '',
     plannedEndDate: '',
-    contractValue: 0,
+    contractValue: '0',
     status: 'em_execucao' as any,
     notes: ''
   });
@@ -62,7 +63,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
       managerId: project.managerId || 'Ricardo Silva',
       startDate: project.startDate || '',
       plannedEndDate: project.plannedEndDate || '',
-      contractValue: project.contractValue || 0,
+      contractValue: project.contractValue !== undefined ? String(project.contractValue) : '0',
       status: project.status || 'em_execucao',
       notes: project.notes || ''
     });
@@ -81,7 +82,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
       managerId: projectEditForm.managerId,
       startDate: projectEditForm.startDate,
       plannedEndDate: projectEditForm.plannedEndDate,
-      contractValue: Number(projectEditForm.contractValue) || 0,
+      contractValue: parseCurrencyInput(projectEditForm.contractValue),
       status: projectEditForm.status,
       notes: projectEditForm.notes.trim()
     });
@@ -504,17 +505,17 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Contrato Base</span>
             <span className="text-base font-bold text-slate-900 block mt-0.5">
-              €{project.contractValue.toLocaleString('pt-PT')}
+              {formatCurrency(project.contractValue)}
             </span>
             <span className="text-[10px] text-emerald-600 font-medium">
-              Extras: +€{summary.extrasApproved.toLocaleString('pt-PT')}
+              Extras: +{formatCurrency(summary.extrasApproved)}
             </span>
           </div>
 
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Total Obra</span>
             <span className="text-base font-extrabold text-slate-900 block mt-0.5">
-              €{summary.totalContractValue.toLocaleString('pt-PT')}
+              {formatCurrency(summary.totalContractValue)}
             </span>
             <span className="text-[10px] text-slate-500">Base + Extras Aprovados</span>
           </div>
@@ -522,7 +523,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Faturado</span>
             <span className="text-base font-bold text-sky-700 block mt-0.5">
-              €{summary.totalBilled.toLocaleString('pt-PT')}
+              {formatCurrency(summary.totalBilled)}
             </span>
             <span className="text-[10px] text-slate-500">
               {((summary.totalBilled / (summary.totalContractValue || 1)) * 100).toFixed(0)}% do contrato
@@ -532,10 +533,10 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Recebido</span>
             <span className="text-base font-bold text-emerald-600 block mt-0.5">
-              €{summary.totalReceived.toLocaleString('pt-PT')}
+              {formatCurrency(summary.totalReceived)}
             </span>
             <span className="text-[10px] text-slate-500">
-              A Receber: €{Math.round(summary.balanceReceivable).toLocaleString('pt-PT')}
+              A Receber: {formatCurrency(summary.balanceReceivable)}
             </span>
           </div>
 
@@ -547,10 +548,10 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
               </span>
             </div>
             <span className="text-base font-black text-emerald-400 block mt-0.5">
-              €{Math.round(summary.marginAmount).toLocaleString('pt-PT')}
+              {formatCurrency(summary.marginAmount)}
             </span>
             <span className="text-[10px] text-slate-400">
-              Custo Total: €{Math.round(summary.totalCost).toLocaleString('pt-PT')}
+              Custo Total: {formatCurrency(summary.totalCost)}
             </span>
           </div>
         </div>
@@ -1852,13 +1853,21 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Valor Contratado (€) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={projectEditForm.contractValue || ''}
-                    onChange={e => setProjectEditForm({ ...projectEditForm, contractValue: parseFloat(e.target.value) || 0 })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-2 text-slate-400 font-bold text-xs">€</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      placeholder="0,00"
+                      value={projectEditForm.contractValue}
+                      onChange={e => setProjectEditForm({ ...projectEditForm, contractValue: sanitizeCurrencyInput(e.target.value) })}
+                      className="w-full pl-7 pr-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Pode indicar 0 ou cêntimos (ex: 25.388,99)
+                  </span>
                 </div>
 
                 <div>

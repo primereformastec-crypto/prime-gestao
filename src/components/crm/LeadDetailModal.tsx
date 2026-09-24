@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Lead, LeadStatus } from '../../types';
 import { getInterestBadge, STANDARD_INTERESTS } from '../../utils/interestDetector';
+import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
 import { 
   X, Phone, Mail, MapPin, Calendar, Clock, DollarSign, 
   Send, User, MessageSquare, AlertCircle, CheckCircle2, 
@@ -26,6 +27,12 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
   const [noteType, setNoteType] = useState<'nota' | 'chamada' | 'whatsapp' | 'visita' | 'orcamento'>('whatsapp');
   const [isConverting, setIsConverting] = useState(false);
 
+  // Valor de orçamento do lead como string para permitir digitação de 0 e decimais
+  const [budgetString, setBudgetString] = useState<string>(() => {
+    const val = lead?.finalValue ?? lead?.estimatedValue ?? 0;
+    return String(val);
+  });
+
   // Estado para edição rápida dos dados de contacto do Lead
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [contactForm, setContactForm] = useState({
@@ -47,6 +54,8 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
         address: lead.address || '',
         salesRep: lead.salesRep || 'Alexandre'
       });
+      const val = lead.finalValue ?? lead.estimatedValue ?? 0;
+      setBudgetString(String(val));
     }
   }, [lead?.id]);
 
@@ -409,13 +418,16 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose }) => {
                 <div className="flex items-center gap-1.5">
                   <span className="font-black text-slate-500 text-sm">€</span>
                   <input
-                    type="number"
-                    value={(lead.finalValue || lead.estimatedValue) || ''}
+                    type="text"
+                    inputMode="decimal"
+                    value={budgetString}
                     onChange={e => {
-                      const num = parseFloat(e.target.value) || 0;
+                      const sanitized = sanitizeCurrencyInput(e.target.value);
+                      setBudgetString(sanitized);
+                      const num = parseCurrencyInput(sanitized);
                       updateLead(lead.id, { estimatedValue: num, finalValue: num });
                     }}
-                    placeholder="0 (A definir)"
+                    placeholder="0"
                     className="w-full px-2.5 py-1 text-sm font-black text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

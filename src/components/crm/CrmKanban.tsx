@@ -4,6 +4,7 @@ import { Lead, LeadStatus, Project, ProjectStatus } from '../../types';
 import { LeadDetailModal } from './LeadDetailModal';
 import { LegacyLeadsPipeline } from './LegacyLeadsPipeline';
 import { detectLeadInterest, getInterestBadge, STANDARD_INTERESTS } from '../../utils/interestDetector';
+import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
 import { 
   Plus, Search, Phone, MapPin, Calendar, Clock, 
   Euro, User, AlertCircle, CheckCircle2, AlertTriangle,
@@ -40,7 +41,7 @@ export const CrmKanban: React.FC = () => {
   const [matchingExistingProject, setMatchingExistingProject] = useState<Project | null>(null);
   const [convertStatus, setConvertStatus] = useState<ProjectStatus>('em_execucao');
   const [convertService, setConvertService] = useState('');
-  const [convertContractValue, setConvertContractValue] = useState<number>(0);
+  const [convertContractValue, setConvertContractValue] = useState<string>('0');
   const [convertNotes, setConvertNotes] = useState('');
 
   // 10 colunas comerciais
@@ -161,7 +162,7 @@ export const CrmKanban: React.FC = () => {
     setLeadToConvert(lead);
     setMatchingExistingProject(matchedProj);
     setConvertService(lead.service || 'Reforma Geral');
-    setConvertContractValue(lead.finalValue || lead.estimatedValue || 0);
+    setConvertContractValue(String(lead.finalValue ?? lead.estimatedValue ?? 0));
     setConvertStatus('em_execucao');
     setConvertNotes(lead.notes || '');
   };
@@ -171,7 +172,7 @@ export const CrmKanban: React.FC = () => {
     const { project } = convertLeadToProjectAndClient(leadToConvert.id, {
       status: convertStatus,
       serviceType: convertService.trim() || leadToConvert.service,
-      contractValue: Number(convertContractValue) || 0,
+      contractValue: parseCurrencyInput(convertContractValue),
       notes: convertNotes
     });
     setLeadToConvert(null);
@@ -199,7 +200,7 @@ export const CrmKanban: React.FC = () => {
     service: '🚿 Plato de Ducha',
     source: 'Instagram' as Lead['source'],
     salesRep: 'Alexandre (Comercial)',
-    estimatedValue: 0,
+    estimatedValue: '0',
     notes: ''
   });
 
@@ -214,7 +215,7 @@ export const CrmKanban: React.FC = () => {
       service: newLeadForm.service,
       source: newLeadForm.source,
       salesRep: newLeadForm.salesRep,
-      estimatedValue: Number(newLeadForm.estimatedValue) || 0,
+      estimatedValue: parseCurrencyInput(newLeadForm.estimatedValue),
       status: 'novo_lead',
       dateAdded: new Date().toISOString().slice(0, 10),
       notes: newLeadForm.notes
@@ -651,12 +652,19 @@ export const CrmKanban: React.FC = () => {
                           <div className="flex items-center gap-1 font-bold">
                             <span className="text-xs text-slate-400">€</span>
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               placeholder="0 (A orçar)"
-                              value={(lead.finalValue || lead.estimatedValue) || ''}
-                              onChange={e => {
-                                const num = parseFloat(e.target.value) || 0;
+                              defaultValue={lead.finalValue ?? lead.estimatedValue ?? 0}
+                              key={`crm-card-budget-${lead.id}-${lead.finalValue ?? lead.estimatedValue ?? 0}`}
+                              onBlur={e => {
+                                const num = parseCurrencyInput(e.target.value);
                                 updateLead(lead.id, { estimatedValue: num, finalValue: num });
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLInputElement).blur();
+                                }
                               }}
                               className="w-24 px-2 py-0.5 text-xs font-black text-right text-emerald-950 bg-white rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                               title="Digite o valor deste orçamento"
@@ -933,10 +941,11 @@ export const CrmKanban: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Valor do Orçamento (€)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="0 (A orçar)"
-                    value={newLeadForm.estimatedValue || ''}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, estimatedValue: Number(e.target.value) })}
+                    value={newLeadForm.estimatedValue}
+                    onChange={e => setNewLeadForm({ ...newLeadForm, estimatedValue: sanitizeCurrencyInput(e.target.value) })}
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
                   />
                 </div>
@@ -1084,9 +1093,11 @@ export const CrmKanban: React.FC = () => {
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Valor Real Fechado (€):</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       value={convertContractValue}
-                      onChange={e => setConvertContractValue(Number(e.target.value))}
+                      onChange={e => setConvertContractValue(sanitizeCurrencyInput(e.target.value))}
+                      placeholder="0"
                       className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-black text-emerald-700"
                     />
                   </div>
