@@ -177,43 +177,64 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const PURGE_KEY = 'prime_clean_v10_zero_mock';
-if (typeof window !== 'undefined') {
-  if (!localStorage.getItem(PURGE_KEY)) {
-    localStorage.clear();
-    localStorage.setItem(PURGE_KEY, 'true');
-    localStorage.setItem('prime_clean_mode', 'true');
-  }
-}
-
-// Helper to filter out any residual mock items by pattern or id
-const sanitizeStorageArray = <T extends { id?: string }>(key: string): T[] => {
+// Helper to filter out only specific legacy demo mock items without wiping user data
+const sanitizeStorageArray = <T extends { id?: string; name?: string }>(key: string): T[] => {
   if (typeof window === 'undefined') return [];
   try {
     const s = localStorage.getItem(key);
     if (!s) return [];
     const parsed = JSON.parse(s);
     if (!Array.isArray(parsed)) return [];
-    // If it contains legacy fake demo ids like 'CLI-0001', 'proj-1', 'lead-1', discard them!
-    const isMock = parsed.some(item => 
-      item?.id?.startsWith('CLI-000') || 
-      item?.id?.startsWith('lead-00') || 
-      item?.id === 'proj-1' || 
-      item?.id === 'proj-2' || 
-      item?.id === 'proj-3' ||
-      item?.name === 'Dr. Miguel Oliveira' ||
-      item?.name === 'Ana Beatriz Costa' ||
-      item?.name === 'Apartamento T3 Chiado'
-    );
-    if (isMock) {
-      localStorage.removeItem(key);
-      return [];
-    }
-    return parsed;
+    // Only exclude legacy sample dummy mock items, NEVER remove real user data
+    return parsed.filter(item => {
+      if (!item) return false;
+      if (item.name === 'Dr. Miguel Oliveira' || item.name === 'Ana Beatriz Costa' || item.name === 'Apartamento T3 Chiado') {
+        return false;
+      }
+      if (item.id === 'proj-1' || item.id === 'proj-2' || item.id === 'proj-3') {
+        return false;
+      }
+      return true;
+    }) as T[];
   } catch {
     return [];
   }
 };
+
+export const DEFAULT_RESTORED_CLIENTS: Client[] = [
+  {
+    id: 'CLI-001',
+    name: 'Alba Sebastian Dário',
+    phone: '+34',
+    email: '',
+    nif: '01',
+    address: 'Font Rica, 24bis A',
+    city: 'Sant Cugat, Barcelona',
+    notes: 'Cliente registada na carteira oficial da PRIME.',
+    createdAt: '2026-09-24',
+    totalSpent: 25388
+  }
+];
+
+export const DEFAULT_RESTORED_PROJECTS: Project[] = [
+  {
+    id: 'OB-0001',
+    clientId: 'CLI-001',
+    title: 'Sant Cugat',
+    serviceType: 'Reforma integral',
+    address: 'Font Rica, 24bis A',
+    city: 'Sant Cugat, Barcelona',
+    managerId: 'usr-1',
+    startDate: '2026-10-01',
+    plannedEndDate: '2026-10-30',
+    contractValue: 25388,
+    status: 'agendada',
+    progressPercent: 0,
+    notes: 'Obra em Sant Cugat',
+    createdAt: '2026-09-24',
+    isArchived: false
+  }
+];
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Utilizador único unificado para toda a equipa
@@ -275,8 +296,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Coleções principais 100% limpas para dados reais da equipa
   const [leads, setLeads] = useState<Lead[]>(() => sanitizeStorageArray<Lead>('prime_leads'));
-  const [clients, setClients] = useState<Client[]>(() => sanitizeStorageArray<Client>('prime_clients'));
-  const [projects, setProjects] = useState<Project[]>(() => sanitizeStorageArray<Project>('prime_projects'));
+  const [clients, setClients] = useState<Client[]>(() => {
+    const loaded = sanitizeStorageArray<Client>('prime_clients');
+    if (loaded && loaded.length > 0) {
+      const hasAlba = loaded.some(c => c.name.toLowerCase().includes('alba') || c.id === 'CLI-001');
+      return hasAlba ? loaded : [...DEFAULT_RESTORED_CLIENTS, ...loaded];
+    }
+    return DEFAULT_RESTORED_CLIENTS;
+  });
+  const [projects, setProjects] = useState<Project[]>(() => {
+    const loaded = sanitizeStorageArray<Project>('prime_projects');
+    if (loaded && loaded.length > 0) {
+      const hasObra = loaded.some(p => p.title.toLowerCase().includes('sant cugat') || p.id === 'OB-0001');
+      return hasObra ? loaded : [...DEFAULT_RESTORED_PROJECTS, ...loaded];
+    }
+    return DEFAULT_RESTORED_PROJECTS;
+  });
   const [stages, setStages] = useState<ProjectStage[]>(() => sanitizeStorageArray<ProjectStage>('prime_stages'));
   const [employees, setEmployees] = useState<Employee[]>(() => {
     const loaded = sanitizeStorageArray<Employee>('prime_employees');
@@ -369,46 +404,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then(res => res.json())
       .then(data => {
         if (data && data.isInitialized) {
-          if (data.isCleanMode) {
-            setIsCleanMode(true);
-            setLeads(data.leads || []);
-            setClients(data.clients || []);
-            setProjects(data.projects || []);
-            setStages(data.stages || []);
-            if (data.employees && data.employees.length > 0) setEmployees(data.employees);
-            if (data.tools && data.tools.length > 0) setTools(data.tools);
-            if (data.materialStock && data.materialStock.length > 0) setMaterialStock(data.materialStock);
-            setShifts(data.shifts || []);
-            setMaterials(data.materials || []);
-            setExpenses(data.expenses || []);
-            setFixedExpenses(data.fixedExpenses || []);
-            setInvoices(data.invoices || []);
-            setPayments(data.payments || []);
-            setMilestones(data.milestones || []);
-            setChangeOrders(data.changeOrders || []);
-            setDailyLogs(data.dailyLogs || []);
-            setPhotos(data.photos || []);
-            setDocuments(data.documents || []);
-          } else {
-            if (data.leads) setLeads(data.leads);
-            if (data.clients) setClients(data.clients);
-            if (data.projects) setProjects(data.projects);
-            if (data.stages) setStages(data.stages);
-            if (data.employees && data.employees.length > 0) setEmployees(data.employees);
-            if (data.tools && data.tools.length > 0) setTools(data.tools);
-            if (data.materialStock && data.materialStock.length > 0) setMaterialStock(data.materialStock);
-            if (data.shifts) setShifts(data.shifts);
-            if (data.materials) setMaterials(data.materials);
-            if (data.expenses) setExpenses(data.expenses);
-            if (data.fixedExpenses) setFixedExpenses(data.fixedExpenses);
-            if (data.invoices) setInvoices(data.invoices);
-            if (data.payments) setPayments(data.payments);
-            if (data.milestones) setMilestones(data.milestones);
-            if (data.changeOrders) setChangeOrders(data.changeOrders);
-            if (data.dailyLogs) setDailyLogs(data.dailyLogs);
-            if (data.photos) setPhotos(data.photos);
-            if (data.documents) setDocuments(data.documents);
+          if (data.isCleanMode) setIsCleanMode(true);
+          if (data.leads && data.leads.length > 0) setLeads(data.leads);
+
+          // PROTECTED SYNC: Never wipe clients with empty server arrays
+          if (data.clients && data.clients.length > 0) {
+            setClients(prev => {
+              const existingIds = new Set(data.clients.map((c: Client) => c.id));
+              const missingFromRemote = prev.filter(c => !existingIds.has(c.id));
+              return [...data.clients, ...missingFromRemote];
+            });
           }
+
+          // PROTECTED SYNC: Never wipe projects with empty server arrays
+          if (data.projects && data.projects.length > 0) {
+            setProjects(prev => {
+              const existingIds = new Set(data.projects.map((p: Project) => p.id));
+              const missingFromRemote = prev.filter(p => !existingIds.has(p.id));
+              return [...data.projects, ...missingFromRemote];
+            });
+          }
+
+          if (data.stages && data.stages.length > 0) setStages(data.stages);
+          if (data.employees && data.employees.length > 0) setEmployees(data.employees);
+          if (data.tools && data.tools.length > 0) setTools(data.tools);
+          if (data.materialStock && data.materialStock.length > 0) setMaterialStock(data.materialStock);
+          if (data.shifts && data.shifts.length > 0) setShifts(data.shifts);
+          if (data.materials && data.materials.length > 0) setMaterials(data.materials);
+          if (data.expenses && data.expenses.length > 0) setExpenses(data.expenses);
+          if (data.fixedExpenses && data.fixedExpenses.length > 0) setFixedExpenses(data.fixedExpenses);
+          if (data.invoices && data.invoices.length > 0) setInvoices(data.invoices);
+          if (data.payments && data.payments.length > 0) setPayments(data.payments);
+          if (data.milestones && data.milestones.length > 0) setMilestones(data.milestones);
+          if (data.changeOrders && data.changeOrders.length > 0) setChangeOrders(data.changeOrders);
+          if (data.dailyLogs && data.dailyLogs.length > 0) setDailyLogs(data.dailyLogs);
+          if (data.photos && data.photos.length > 0) setPhotos(data.photos);
+          if (data.documents && data.documents.length > 0) setDocuments(data.documents);
         }
       })
       .catch(err => console.log('[CentralDB] Modo local / offline:', err));

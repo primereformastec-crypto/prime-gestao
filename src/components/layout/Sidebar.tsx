@@ -31,7 +31,7 @@ export const Sidebar: React.FC = () => {
   // Badges calculations
   const newLeadsCount = leads.filter(l => !l.isLegacy && l.status === 'novo_lead').length;
   const legacyLeadsCount = leads.filter(l => l.isLegacy && l.status === 'novo_lead').length;
-  const activeProjectsCount = projects.filter(p => p.status === 'em_execucao').length;
+  const activeProjectsCount = projects.filter(p => !p.isArchived && p.status !== 'concluida' && p.status !== 'cancelada').length;
   const pendingInvoicesCount = invoices.filter(i => i.status === 'emitida' || i.status === 'pendente' || i.status === 'parcialmente_paga').length;
   const pendingShiftsCount = shifts.filter(s => s.status === 'pendente').length;
 

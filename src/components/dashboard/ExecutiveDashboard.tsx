@@ -44,7 +44,7 @@ export const ExecutiveDashboard: React.FC = () => {
   const grossMargin = billedTotal - totalCost;
   const grossMarginPercent = billedTotal > 0 ? ((grossMargin / billedTotal) * 100).toFixed(1) : '0';
 
-  const activeProjectsCount = projects.filter(p => p.status === 'em_execucao').length;
+  const activeProjectsCount = projects.filter(p => !p.isArchived && p.status !== 'concluida' && p.status !== 'cancelada').length;
   const completedProjectsCount = projects.filter(p => p.status === 'concluida').length;
 
   // Monthly trend data for charts

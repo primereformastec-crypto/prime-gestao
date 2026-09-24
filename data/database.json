@@ -1,8 +1,39 @@
 {
   "isCleanMode": true,
   "leads": [],
-  "clients": [],
-  "projects": [],
+  "clients": [
+    {
+      "id": "CLI-001",
+      "name": "Alba Sebastian Dário",
+      "phone": "+34",
+      "email": "",
+      "nif": "01",
+      "address": "Font Rica, 24bis A",
+      "city": "Sant Cugat, Barcelona",
+      "notes": "Cliente registada na carteira oficial da PRIME.",
+      "createdAt": "2026-09-24",
+      "totalSpent": 25388
+    }
+  ],
+  "projects": [
+    {
+      "id": "OB-0001",
+      "clientId": "CLI-001",
+      "title": "Sant Cugat",
+      "serviceType": "Reforma integral",
+      "address": "Font Rica, 24bis A",
+      "city": "Sant Cugat, Barcelona",
+      "managerId": "usr-1",
+      "startDate": "2026-10-01",
+      "plannedEndDate": "2026-10-30",
+      "contractValue": 25388,
+      "status": "agendada",
+      "progressPercent": 0,
+      "notes": "Obra em Sant Cugat",
+      "createdAt": "2026-09-24",
+      "isArchived": false
+    }
+  ],
   "stages": [],
   "employees": [],
   "shifts": [],
@@ -17,5 +48,5 @@
   "photos": [],
   "documents": [],
   "isInitialized": true,
-  "lastUpdated": "2026-09-23T11:20:35.600Z"
+  "lastUpdated": "2026-09-24T16:30:00.000Z"
 }
