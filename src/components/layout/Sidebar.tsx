@@ -5,7 +5,7 @@ import {
   ListTree, Calendar, Clock, Package, Receipt, FileText, 
   Coins, UserCheck, BarChart3, Settings, ShieldCheck, 
   Sparkles, Smartphone, Eye, UploadCloud, ChevronDown, ChevronRight,
-  Briefcase, Wrench, Wallet, PieChart, LogOut, X, History
+  Briefcase, Wrench, Wallet, PieChart, LogOut, X, History, Hammer
 } from 'lucide-react';
 
 interface NavSection {
@@ -25,7 +25,7 @@ interface NavSection {
 export const Sidebar: React.FC = () => {
   const { 
     activeTab, setActiveTab, currentUser, leads, projects, 
-    invoices, shifts, logout, mobileMenuOpen, setMobileMenuOpen 
+    invoices, shifts, employees, logout, mobileMenuOpen, setMobileMenuOpen 
   } = useApp();
 
   // Badges calculations
@@ -58,7 +58,10 @@ export const Sidebar: React.FC = () => {
         { id: 'plano_obra', label: 'Plano de Obra', icon: ListTree, roles: ['admin', 'gestor'] },
         { id: 'gantt', label: 'Cronograma Gantt', icon: Calendar, roles: ['admin', 'gestor'] },
         { id: 'planeamento', label: 'Planeamento Semanal', icon: Calendar, roles: ['admin', 'gestor'] },
-        { id: 'diarias', label: 'Diárias & Equipa', icon: Clock, badge: pendingShiftsCount > 0 ? pendingShiftsCount : undefined, badgeColor: 'bg-orange-500', roles: ['admin', 'gestor', 'financeiro'] },
+        { id: 'equipa', label: 'Equipa & Funcionários', icon: Users2, badge: employees.length > 0 ? employees.length : undefined, badgeColor: 'bg-sky-600', roles: ['admin', 'gestor', 'financeiro'] },
+        { id: 'diarias', label: 'Diárias & Apontamentos', icon: Clock, badge: pendingShiftsCount > 0 ? pendingShiftsCount : undefined, badgeColor: 'bg-orange-500', roles: ['admin', 'gestor', 'financeiro'] },
+        { id: 'ferramentas', label: 'Ferramentas & Equipamentos', icon: Hammer, roles: ['admin', 'gestor', 'financeiro'] },
+        { id: 'stock_materiais', label: 'Materiais & Stock', icon: Package, roles: ['admin', 'gestor', 'financeiro'] },
       ]
     },
     {

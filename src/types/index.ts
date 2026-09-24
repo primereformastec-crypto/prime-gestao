@@ -181,12 +181,14 @@ export interface Employee {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   role: string; // Encarregado, Pedreiro, Eletricista, Pintor, Ajudante, etc.
   dailyRate: number; // Valor diária
   halfDayRate: number; // Meia diária
   hourlyRate: number; // Valor hora
   status: 'ativo' | 'inativo';
   avatar?: string;
+  notes?: string;
 }
 
 export type ShiftType = 'diaria' | 'meia_diaria' | 'horas';
@@ -210,7 +212,24 @@ export interface EmployeeShift {
   clockOut?: string;
 }
 
-// ===================== MATERIAIS =====================
+// ===================== FERRAMENTAS & EQUIPAMENTOS =====================
+export type ToolStatus = 'disponivel' | 'em_uso' | 'em_manutencao' | 'danificada';
+
+export interface ToolItem {
+  id: string;
+  code: string; // Ex: FER-001
+  name: string; // Ex: Martelo Perfurador SDS-Plus
+  brand?: string; // Ex: Bosch Professional, Makita, DeWalt
+  category: string; // Elétrica, Manual, Corte, Medição & Nível Laser, Pintura, Andaimes & Escadas, etc.
+  status: ToolStatus;
+  currentLocation: string; // Ex: "Armazém Central" ou ID/Nome da Obra
+  assignedToEmployeeId?: string; // Colaborador responsável
+  purchaseDate?: string;
+  purchaseValue?: number;
+  notes?: string;
+}
+
+// ===================== MATERIAIS & STOCK =====================
 export interface MaterialPurchase {
   id: string;
   date: string;
@@ -227,6 +246,19 @@ export interface MaterialPurchase {
   paymentDate?: string;
   paymentMethod?: string;
   documentUrl?: string;
+  notes?: string;
+}
+
+export interface MaterialStockItem {
+  id: string;
+  code: string; // Ex: MAT-001
+  name: string; // Ex: Argamassa Colante C2TE
+  category: string; // Cimentos & Argamassas, Pladur & Perfis, Canalização, Pintura, Eletricidade, Cerâmica, etc.
+  quantity: number;
+  unit: string; // Saco, m², m, Lata, Un, Caixa, kg
+  location: string; // Armazém Central, Sobra da Obra, etc.
+  minQuantity?: number;
+  unitPrice?: number;
   notes?: string;
 }
 

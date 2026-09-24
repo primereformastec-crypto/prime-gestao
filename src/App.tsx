@@ -14,6 +14,9 @@ import { PlanoObraView } from './components/projects/PlanoObraView';
 import { GanttView } from './components/gantt/GanttView';
 import { WeeklyPlanning } from './components/planning/WeeklyPlanning';
 import { EmployeesView } from './components/employees/EmployeesView';
+import { TeamView } from './components/employees/TeamView';
+import { ToolsView } from './components/inventory/ToolsView';
+import { MaterialStockView } from './components/inventory/MaterialStockView';
 import { InvoicesView } from './components/finance/InvoicesView';
 import { BillingMilestonesView } from './components/finance/BillingMilestonesView';
 import { PayablesView } from './components/finance/PayablesView';
@@ -80,9 +83,15 @@ const MainLayout: React.FC = () => {
         return <GanttView />;
       case 'planeamento':
         return <WeeklyPlanning />;
-      case 'diarias':
+      case 'equipa':
       case 'funcionarios':
+        return <TeamView />;
+      case 'diarias':
         return <EmployeesView />;
+      case 'ferramentas':
+        return <ToolsView />;
+      case 'stock_materiais':
+        return <MaterialStockView />;
       case 'materiais':
       case 'gastos':
         return <PayablesView />;

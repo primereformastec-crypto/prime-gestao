@@ -4,10 +4,10 @@ import {
   ProjectStage, StageStatus, Employee, EmployeeShift, ShiftStatus, 
   MaterialPurchase, Expense, Quote, Invoice, Payment, BillingMilestone, 
   ChangeOrder, DailyLog, ProjectPhoto, ProjectDocument, AppNotification, 
-  AuditLog, ProjectFinancialSummary, FixedExpense 
+  AuditLog, ProjectFinancialSummary, FixedExpense, ToolItem, MaterialStockItem 
 } from '../types';
 import {
-  INITIAL_USERS, INITIAL_EMPLOYEES, INITIAL_CLIENTS, INITIAL_PROJECTS,
+  INITIAL_USERS, INITIAL_EMPLOYEES, INITIAL_TOOLS, INITIAL_MATERIAL_STOCK, INITIAL_CLIENTS, INITIAL_PROJECTS,
   INITIAL_STAGES, INITIAL_SHIFTS, INITIAL_MATERIALS, INITIAL_EXPENSES,
   INITIAL_MILESTONES, INITIAL_INVOICES, INITIAL_PAYMENTS, INITIAL_CHANGE_ORDERS,
   INITIAL_DAILY_LOGS, INITIAL_PHOTOS, INITIAL_DOCUMENTS, INITIAL_LEADS,
@@ -41,6 +41,8 @@ interface AppContextType {
   stages: ProjectStage[];
   employees: Employee[];
   shifts: EmployeeShift[];
+  tools: ToolItem[];
+  materialStock: MaterialStockItem[];
   materials: MaterialPurchase[];
   expenses: Expense[];
   fixedExpenses: FixedExpense[];
@@ -89,6 +91,18 @@ interface AppContextType {
   addSubtaskToStage: (stageId: string, subtaskName: string) => void;
   deleteSubtaskFromStage: (stageId: string, subtaskId: string) => void;
   applyStageTemplate: (projectId: string, templateType: 'integral' | 'cozinha' | 'banheiro' | 'pintura') => void;
+
+  addEmployee: (emp: Omit<Employee, 'id'>) => Employee;
+  updateEmployee: (id: string, updates: Partial<Employee>) => void;
+  deleteEmployee: (id: string) => void;
+
+  addTool: (tool: Omit<ToolItem, 'id'>) => ToolItem;
+  updateTool: (id: string, updates: Partial<ToolItem>) => void;
+  deleteTool: (id: string) => void;
+
+  addMaterialStockItem: (item: Omit<MaterialStockItem, 'id'>) => MaterialStockItem;
+  updateMaterialStockItem: (id: string, updates: Partial<MaterialStockItem>) => void;
+  deleteMaterialStockItem: (id: string) => void;
 
   addShift: (shift: Omit<EmployeeShift, 'id'>) => void;
   updateShiftStatus: (shiftId: string, status: ShiftStatus, paymentInfo?: { method: string; date: string }) => void;
@@ -180,11 +194,10 @@ const sanitizeStorageArray = <T extends { id?: string }>(key: string): T[] => {
     if (!s) return [];
     const parsed = JSON.parse(s);
     if (!Array.isArray(parsed)) return [];
-    // If it contains legacy fake demo ids like 'CLI-0001', 'proj-1', 'lead-1', 'EMP-01', discard them!
+    // If it contains legacy fake demo ids like 'CLI-0001', 'proj-1', 'lead-1', discard them!
     const isMock = parsed.some(item => 
       item?.id?.startsWith('CLI-000') || 
       item?.id?.startsWith('lead-00') || 
-      item?.id?.startsWith('EMP-0') ||
       item?.id === 'proj-1' || 
       item?.id === 'proj-2' || 
       item?.id === 'proj-3' ||
@@ -265,8 +278,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [clients, setClients] = useState<Client[]>(() => sanitizeStorageArray<Client>('prime_clients'));
   const [projects, setProjects] = useState<Project[]>(() => sanitizeStorageArray<Project>('prime_projects'));
   const [stages, setStages] = useState<ProjectStage[]>(() => sanitizeStorageArray<ProjectStage>('prime_stages'));
-  const [employees, setEmployees] = useState<Employee[]>(() => sanitizeStorageArray<Employee>('prime_employees'));
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    const loaded = sanitizeStorageArray<Employee>('prime_employees');
+    return loaded && loaded.length > 0 ? loaded : INITIAL_EMPLOYEES;
+  });
   const [shifts, setShifts] = useState<EmployeeShift[]>(() => sanitizeStorageArray<EmployeeShift>('prime_shifts'));
+  const [tools, setTools] = useState<ToolItem[]>(() => {
+    const loaded = sanitizeStorageArray<ToolItem>('prime_tools');
+    return loaded && loaded.length > 0 ? loaded : INITIAL_TOOLS;
+  });
+  const [materialStock, setMaterialStock] = useState<MaterialStockItem[]>(() => {
+    const loaded = sanitizeStorageArray<MaterialStockItem>('prime_material_stock');
+    return loaded && loaded.length > 0 ? loaded : INITIAL_MATERIAL_STOCK;
+  });
   const [materials, setMaterials] = useState<MaterialPurchase[]>(() => sanitizeStorageArray<MaterialPurchase>('prime_materials'));
   const [expenses, setExpenses] = useState<Expense[]>(() => sanitizeStorageArray<Expense>('prime_expenses'));
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(() => sanitizeStorageArray<FixedExpense>('prime_fixed_expenses'));
@@ -324,6 +348,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [milestones]);
 
   useEffect(() => {
+    localStorage.setItem('prime_tools', JSON.stringify(tools));
+  }, [tools]);
+
+  useEffect(() => {
+    localStorage.setItem('prime_material_stock', JSON.stringify(materialStock));
+  }, [materialStock]);
+
+  useEffect(() => {
     localStorage.setItem('prime_change_orders', JSON.stringify(changeOrders));
   }, [changeOrders]);
 
@@ -343,7 +375,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setClients(data.clients || []);
             setProjects(data.projects || []);
             setStages(data.stages || []);
-            setEmployees(data.employees || []);
+            if (data.employees && data.employees.length > 0) setEmployees(data.employees);
+            if (data.tools && data.tools.length > 0) setTools(data.tools);
+            if (data.materialStock && data.materialStock.length > 0) setMaterialStock(data.materialStock);
             setShifts(data.shifts || []);
             setMaterials(data.materials || []);
             setExpenses(data.expenses || []);
@@ -360,7 +394,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (data.clients) setClients(data.clients);
             if (data.projects) setProjects(data.projects);
             if (data.stages) setStages(data.stages);
-            if (data.employees) setEmployees(data.employees);
+            if (data.employees && data.employees.length > 0) setEmployees(data.employees);
+            if (data.tools && data.tools.length > 0) setTools(data.tools);
+            if (data.materialStock && data.materialStock.length > 0) setMaterialStock(data.materialStock);
             if (data.shifts) setShifts(data.shifts);
             if (data.materials) setMaterials(data.materials);
             if (data.expenses) setExpenses(data.expenses);
@@ -392,6 +428,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           stages,
           employees,
           shifts,
+          tools,
+          materialStock,
           materials,
           expenses,
           fixedExpenses,
@@ -408,7 +446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => clearTimeout(timer);
   }, [
-    isCleanMode, leads, clients, projects, stages, employees, shifts,
+    isCleanMode, leads, clients, projects, stages, employees, shifts, tools, materialStock,
     materials, expenses, fixedExpenses, invoices, payments, milestones,
     changeOrders, dailyLogs, photos, documents
   ]);
@@ -1403,6 +1441,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFixedExpenses(prev => prev.filter(f => f.id !== id));
   };
 
+  // ===================== COLABORADORES & EQUIPA =====================
+  const addEmployee = (empData: Omit<Employee, 'id'>): Employee => {
+    const id = `EMP-${String(employees.length + 1).padStart(3, '0')}`;
+    const newEmp: Employee = {
+      ...empData,
+      id,
+      dailyRate: Number(empData.dailyRate) || 90,
+      halfDayRate: Number(empData.halfDayRate) || 50,
+      hourlyRate: Number(empData.hourlyRate) || 12,
+      status: empData.status || 'ativo'
+    };
+    setEmployees(prev => [newEmp, ...prev]);
+    logAudit('shift', id, 'Criação', `Colaborador ${newEmp.name} (${newEmp.role}) adicionado`);
+    return newEmp;
+  };
+
+  const updateEmployee = (id: string, updates: Partial<Employee>) => {
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    logAudit('shift', id, 'Atualização', `Colaborador ${id} atualizado`);
+  };
+
+  const deleteEmployee = (id: string) => {
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    logAudit('shift', id, 'Eliminação', `Colaborador ${id} removido`);
+  };
+
+  // ===================== FERRAMENTAS & EQUIPAMENTOS =====================
+  const addTool = (toolData: Omit<ToolItem, 'id'>): ToolItem => {
+    const id = `tool-${Date.now()}`;
+    const code = toolData.code || `FER-${String(tools.length + 1).padStart(3, '0')}`;
+    const newTool: ToolItem = {
+      ...toolData,
+      id,
+      code,
+      status: toolData.status || 'disponivel',
+      currentLocation: toolData.currentLocation || 'Armazém Central'
+    };
+    setTools(prev => [newTool, ...prev]);
+    logAudit('project', id, 'Registo de Ferramenta', `Ferramenta ${newTool.name} (${code}) registada`);
+    return newTool;
+  };
+
+  const updateTool = (id: string, updates: Partial<ToolItem>) => {
+    setTools(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    logAudit('project', id, 'Atualização de Ferramenta', `Ferramenta ${id} atualizada`);
+  };
+
+  const deleteTool = (id: string) => {
+    setTools(prev => prev.filter(t => t.id !== id));
+    logAudit('project', id, 'Eliminação de Ferramenta', `Ferramenta ${id} removida`);
+  };
+
+  // ===================== STOCK DE MATERIAIS =====================
+  const addMaterialStockItem = (itemData: Omit<MaterialStockItem, 'id'>): MaterialStockItem => {
+    const id = `stk-${Date.now()}`;
+    const code = itemData.code || `MAT-${String(materialStock.length + 1).padStart(3, '0')}`;
+    const newItem: MaterialStockItem = {
+      ...itemData,
+      id,
+      code,
+      quantity: Number(itemData.quantity) || 0
+    };
+    setMaterialStock(prev => [newItem, ...prev]);
+    return newItem;
+  };
+
+  const updateMaterialStockItem = (id: string, updates: Partial<MaterialStockItem>) => {
+    setMaterialStock(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  };
+
+  const deleteMaterialStockItem = (id: string) => {
+    setMaterialStock(prev => prev.filter(m => m.id !== id));
+  };
+
   // ===================== SHIFTS / DIÁRIAS =====================
   const addShift = (shiftData: Omit<EmployeeShift, 'id'>) => {
     const id = `SHF-${Date.now()}`;
@@ -1686,6 +1798,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       stages,
       employees,
       shifts,
+      tools,
+      materialStock,
       materials,
       expenses,
       fixedExpenses,
@@ -1699,6 +1813,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       documents,
       notifications,
       auditLogs,
+      addEmployee,
+      updateEmployee,
+      deleteEmployee,
+      addTool,
+      updateTool,
+      deleteTool,
+      addMaterialStockItem,
+      updateMaterialStockItem,
+      deleteMaterialStockItem,
       addLead,
       importBatchLeads,
       deleteLead,

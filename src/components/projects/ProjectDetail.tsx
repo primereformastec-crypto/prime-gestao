@@ -21,7 +21,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
     expenses, invoices, payments, milestones, changeOrders, 
     dailyLogs, photos, documents, auditLogs, 
     getProjectFinancialSummary, updateProject, updateStage, 
-    toggleSubtask, addStage, addShift, updateShiftStatus, 
+    toggleSubtask, addStage, addShift, updateShiftStatus, addEmployee,
     addMaterial, addExpense, createInvoice, recordPayment, 
     addChangeOrder, approveChangeOrder, rejectChangeOrder, 
     addDailyLog, addPhoto 
@@ -298,16 +298,60 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
     });
   };
 
+  const [showQuickAddEmployeeModal, setShowQuickAddEmployeeModal] = useState(false);
+  const [quickEmployeeForm, setQuickEmployeeForm] = useState({
+    name: '',
+    role: 'Oficial Pedreiro & Alvenaria',
+    phone: '',
+    dailyRate: '95',
+    halfDayRate: '50',
+    hourlyRate: '12'
+  });
+
+  const handleQuickAddEmployeeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickEmployeeForm.name.trim()) {
+      alert('O nome do colaborador é obrigatório.');
+      return;
+    }
+
+    const created = addEmployee({
+      name: quickEmployeeForm.name.trim(),
+      role: quickEmployeeForm.role.trim() || 'Oficial de Obra',
+      phone: quickEmployeeForm.phone.trim() || '+34 600 000 000',
+      dailyRate: parseCurrencyInput(quickEmployeeForm.dailyRate) || 95,
+      halfDayRate: parseCurrencyInput(quickEmployeeForm.halfDayRate) || 50,
+      hourlyRate: parseCurrencyInput(quickEmployeeForm.hourlyRate) || 12,
+      status: 'ativo'
+    });
+
+    setShiftForm(prev => ({ ...prev, employeeId: created.id }));
+    setShowQuickAddEmployeeModal(false);
+    setQuickEmployeeForm({
+      name: '',
+      role: 'Oficial Pedreiro & Alvenaria',
+      phone: '',
+      dailyRate: '95',
+      halfDayRate: '50',
+      hourlyRate: '12'
+    });
+  };
+
   // Handlers
   const handleAddShiftSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const emp = employees.find(e => e.id === shiftForm.employeeId);
-    const rate = shiftForm.type === 'diaria' ? (emp?.dailyRate || 90) : (shiftForm.type === 'meia_diaria' ? (emp?.halfDayRate || 50) : (emp?.hourlyRate || 12));
+    const empId = shiftForm.employeeId || employees[0]?.id;
+    if (!empId) {
+      alert('Nenhum funcionário selecionado. Por favor, adicione um funcionário primeiro.');
+      return;
+    }
+    const emp = employees.find(e => e.id === empId);
+    const rate = shiftForm.type === 'diaria' ? (emp?.dailyRate || 95) : (shiftForm.type === 'meia_diaria' ? (emp?.halfDayRate || 50) : (emp?.hourlyRate || 12));
     const totalValue = shiftForm.type === 'horas' ? rate * shiftForm.hours : rate;
 
     addShift({
       projectId: project.id,
-      employeeId: shiftForm.employeeId,
+      employeeId: empId,
       date: shiftForm.date,
       type: shiftForm.type,
       hours: shiftForm.hours,
@@ -1473,16 +1517,43 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
             </div>
             <form onSubmit={handleAddShiftSubmit} className="p-5 space-y-3.5 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Funcionário *</label>
-                <select
-                  value={shiftForm.employeeId}
-                  onChange={e => setShiftForm({ ...shiftForm, employeeId: e.target.value })}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                >
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.role})</option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700">Funcionário *</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickAddEmployeeModal(true)}
+                    className="text-[11px] text-sky-600 hover:text-sky-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Novo Funcionário</span>
+                  </button>
+                </div>
+
+                {employees.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex flex-col gap-2">
+                    <span>Ainda não existem funcionários registados na equipa.</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickAddEmployeeModal(true)}
+                      className="px-3 py-1.5 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 text-xs self-start flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Cadastrar Funcionário Agora</span>
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={shiftForm.employeeId || employees[0]?.id || ''}
+                    onChange={e => setShiftForm({ ...shiftForm, employeeId: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-900"
+                  >
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} ({emp.role}) - {formatCurrency(emp.dailyRate)}/dia
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1523,6 +1594,121 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
               <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
                 <button type="button" onClick={() => setShowAddShiftModal(false)} className="px-3.5 py-1.5 text-slate-600">Cancelar</button>
                 <button type="submit" className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-bold">Gravar Diária</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP RÁPIDO: REGISTAR NOVO FUNCIONÁRIO INLINE */}
+      {showQuickAddEmployeeModal && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 bg-sky-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users2 className="w-4 h-4 text-sky-600" />
+                <h3 className="font-bold text-slate-900 text-sm">Adicionar Novo Funcionário à Equipa</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowQuickAddEmployeeModal(false)} 
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickAddEmployeeSubmit} className="p-5 space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Nome Completo do Funcionário *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Carlos Santos"
+                  value={quickEmployeeForm.name}
+                  onChange={e => setQuickEmployeeForm({ ...quickEmployeeForm, name: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Função / Especialidade</label>
+                  <select
+                    value={quickEmployeeForm.role}
+                    onChange={e => setQuickEmployeeForm({ ...quickEmployeeForm, role: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  >
+                    <option value="Oficial Pedreiro & Alvenaria">Oficial Pedreiro</option>
+                    <option value="Encarregado Geral">Encarregado Geral</option>
+                    <option value="Técnico AVAC & Eletricista">Técnico AVAC & Eletricista</option>
+                    <option value="Pintor & Pladurista">Pintor & Pladurista</option>
+                    <option value="Canalizador">Canalizador</option>
+                    <option value="Ajudante de Obra">Ajudante de Obra</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Telefone / WhatsApp</label>
+                  <input
+                    type="text"
+                    placeholder="+34 600 000 000"
+                    value={quickEmployeeForm.phone}
+                    onChange={e => setQuickEmployeeForm({ ...quickEmployeeForm, phone: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 text-[10px]">Diária (€) *</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={quickEmployeeForm.dailyRate}
+                    onChange={e => setQuickEmployeeForm({ ...quickEmployeeForm, dailyRate: sanitizeCurrencyInput(e.target.value) })}
+                    className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 text-[10px]">Meia (€)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={quickEmployeeForm.halfDayRate}
+                    onChange={e => setQuickEmployeeForm({ ...quickEmployeeForm, halfDayRate: sanitizeCurrencyInput(e.target.value) })}
+                    className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1 text-[10px]">Hora (€)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={quickEmployeeForm.hourlyRate}
+                    onChange={e => setQuickEmployeeForm({ ...quickEmployeeForm, hourlyRate: sanitizeCurrencyInput(e.target.value) })}
+                    className="w-full p-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAddEmployeeModal(false)}
+                  className="px-3.5 py-1.5 text-slate-600 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg"
+                >
+                  Criar e Selecionar
+                </button>
               </div>
             </form>
           </div>
