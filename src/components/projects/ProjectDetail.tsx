@@ -9,6 +9,7 @@ import {
   HardHat, Wallet, CreditCard, Camera, Edit3, MessageCircle, Check
 } from 'lucide-react';
 import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
+import { DeleteProjectModal } from './DeleteProjectModal';
 
 interface Props {
   projectId: string;
@@ -19,12 +20,12 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
   const { 
     projects, clients, stages, employees, shifts, materials, 
     expenses, invoices, payments, milestones, changeOrders, 
-    dailyLogs, photos, documents, auditLogs, 
+    dailyLogs, photos, documents, auditLogs, currentUser,
     getProjectFinancialSummary, updateProject, updateStage, 
     toggleSubtask, addStage, addShift, updateShiftStatus, addEmployee,
     addMaterial, addExpense, createInvoice, recordPayment, 
     addChangeOrder, approveChangeOrder, rejectChangeOrder, 
-    addDailyLog, addPhoto 
+    addDailyLog, addPhoto, deleteProject
   } = useApp();
 
   const project = projects.find(p => p.id === projectId);
@@ -37,6 +38,35 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
   >('resumo');
 
   // Modals state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
+  const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any | null>(null);
+
+  const [invoiceForm, setInvoiceForm] = useState({
+    code: '',
+    description: '',
+    totalAmount: '',
+    stageOrMilestone: '1ª Parcela (Início)',
+    issueDate: new Date().toISOString().slice(0, 10),
+    dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    notes: '',
+    documentName: '',
+    documentUrl: '',
+    markAsPaid: false,
+    paymentMethod: 'transferencia' as const,
+    paymentBank: 'CaixaBank',
+    paymentReference: ''
+  });
+
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    date: new Date().toISOString().slice(0, 10),
+    method: 'transferencia' as const,
+    bank: 'CaixaBank',
+    reference: '',
+    notes: ''
+  });
+
   const [showEditProjectModal, setShowEditProjectModal] = useState(false);
   const [projectEditForm, setProjectEditForm] = useState({
     title: '',
@@ -60,7 +90,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
       serviceType: project.serviceType || 'Reforma integral',
       city: project.city || 'Barcelona',
       address: project.address || '',
-      managerId: project.managerId || 'Ricardo Silva',
+      managerId: project.managerId || 'Alexandre Carvalho',
       startDate: project.startDate || '',
       plannedEndDate: project.plannedEndDate || '',
       contractValue: project.contractValue !== undefined ? String(project.contractValue) : '0',
@@ -400,6 +430,7 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
 
   const handleAddDailyLogSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!project) return;
     addDailyLog({
       projectId: project.id,
       date: dailyLogForm.date,
@@ -408,9 +439,132 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
       workDone: dailyLogForm.workDone,
       issues: dailyLogForm.issues,
       materialsNeeded: dailyLogForm.materialsNeeded,
-      author: 'Ricardo Silva'
+      author: currentUser?.name || project?.managerId || 'Alexandre Carvalho'
     });
     setShowAddDailyLogModal(false);
+  };
+
+  const handleInvoiceFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setInvoiceForm(prev => ({
+        ...prev,
+        documentName: file.name,
+        documentUrl: dataUrl
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateProjectInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!project) return;
+    const total = parseCurrencyInput(invoiceForm.totalAmount);
+    if (total <= 0) {
+      alert('Por favor insira um valor válido para a fatura.');
+      return;
+    }
+    const base = Math.round((total / 1.23) * 100) / 100;
+    const vat = Math.round((total - base) * 100) / 100;
+
+    const newInv = createInvoice({
+      code: invoiceForm.code.trim() || undefined,
+      clientId: project.clientId,
+      projectId: project.id,
+      issueDate: invoiceForm.issueDate,
+      dueDate: invoiceForm.dueDate,
+      description: invoiceForm.description,
+      stageOrMilestone: invoiceForm.stageOrMilestone,
+      baseAmount: base,
+      vatAmount: vat,
+      totalAmount: total,
+      status: invoiceForm.markAsPaid ? 'paga' : 'emitida',
+      documentUrl: invoiceForm.documentUrl || undefined,
+      documentName: invoiceForm.documentName || undefined,
+      isExternalInvoice: true,
+      items: [
+        {
+          id: `item-${Date.now()}`,
+          description: invoiceForm.description,
+          quantity: 1,
+          unitPrice: base,
+          vatRate: 23,
+          total: total
+        }
+      ],
+      notes: invoiceForm.notes
+    });
+
+    if (invoiceForm.markAsPaid && newInv) {
+      recordPayment({
+        invoiceId: newInv.id,
+        clientId: project.clientId,
+        projectId: project.id,
+        date: invoiceForm.issueDate,
+        amount: total,
+        method: invoiceForm.paymentMethod,
+        bank: invoiceForm.paymentBank,
+        reference: invoiceForm.paymentReference || 'Recebimento no ato de emissão',
+        notes: `Pagamento registado junto com a emissão da fatura ${newInv.code}.`
+      });
+    }
+
+    setShowAddInvoiceModal(false);
+    setInvoiceForm({
+      code: '',
+      description: '',
+      totalAmount: '',
+      stageOrMilestone: 'Parcela de Obra',
+      issueDate: new Date().toISOString().slice(0, 10),
+      dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      notes: '',
+      documentName: '',
+      documentUrl: '',
+      markAsPaid: false,
+      paymentMethod: 'transferencia',
+      paymentBank: 'CaixaBank',
+      paymentReference: ''
+    });
+  };
+
+  const handleOpenPaymentForInvoice = (inv: any) => {
+    setSelectedInvoiceForPayment(inv);
+    const pending = inv.totalAmount - (inv.receivedAmount || 0);
+    setPaymentForm({
+      amount: String(pending > 0 ? pending : 0),
+      date: new Date().toISOString().slice(0, 10),
+      method: 'transferencia',
+      bank: 'CaixaBank',
+      reference: `Recebimento fatura ${inv.code}`,
+      notes: ''
+    });
+  };
+
+  const handleRecordInvoicePayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvoiceForPayment || !project) return;
+    const amount = parseCurrencyInput(paymentForm.amount);
+    if (amount <= 0) {
+      alert('Por favor insira um valor válido de pagamento.');
+      return;
+    }
+
+    recordPayment({
+      invoiceId: selectedInvoiceForPayment.id,
+      clientId: project.clientId,
+      projectId: project.id,
+      date: paymentForm.date,
+      amount,
+      method: paymentForm.method,
+      bank: paymentForm.bank,
+      reference: paymentForm.reference,
+      notes: paymentForm.notes
+    });
+
+    setSelectedInvoiceForPayment(null);
   };
 
   const tabs = [
@@ -428,6 +582,20 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
     { id: 'fotos', label: `Fotos & Docs (${projectPhotos.length})` },
     { id: 'historico', label: 'Histórico' },
   ];
+
+  if (!project) {
+    return (
+      <div className="p-8 text-center space-y-4 max-w-md mx-auto">
+        <p className="text-slate-600 font-medium">Obra não encontrada ou foi removida.</p>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 bg-sky-600 text-white font-bold rounded-xl text-xs"
+        >
+          Voltar para Lista de Obras
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
@@ -479,6 +647,13 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
                   <Edit3 className="w-3.5 h-3.5 text-amber-600" />
                   <span>Editar Obra</span>
                 </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                  title="Eliminar esta Obra"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
               <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-slate-500 mt-1.5">
                 <span className="flex items-center gap-1.5 text-slate-700 font-semibold">
@@ -526,6 +701,14 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAddInvoiceModal(true)}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                title="Emitir/lançar fatura para esta obra"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>+ Fatura</span>
+              </button>
               <button
                 onClick={() => setShowAddShiftModal(true)}
                 className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs"
@@ -673,6 +856,24 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
                       style={{ width: `${Math.min(100, (summary.totalReceived / (summary.totalContractValue || 1)) * 100)}%` }} 
                     />
                   </div>
+                </div>
+
+                {/* Ações de Faturas */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    onClick={() => setActiveInternalTab('faturas')}
+                    className="text-[11px] font-bold text-sky-700 hover:text-sky-800 flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>Ver Faturas ({projectInvoices.length})</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => setShowAddInvoiceModal(true)}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Lançar Fatura</span>
+                  </button>
                 </div>
               </div>
 
@@ -1297,49 +1498,111 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
         {/* 7. FATURAS & PAGAMENTOS */}
         {activeTab === 'faturas' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Faturas Emitidas para esta Obra</h3>
                 <p className="text-xs text-slate-500">
-                  Faturado: €{summary.totalBilled.toLocaleString('pt-PT')} • Recebido: €{summary.totalReceived.toLocaleString('pt-PT')}
+                  Faturado: {formatCurrency(summary.totalBilled)} • Recebido: {formatCurrency(summary.totalReceived)} • Pendente: {formatCurrency(summary.balanceReceivable)}
                 </p>
               </div>
+              <button
+                onClick={() => setShowAddInvoiceModal(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Lançar Fatura nesta Obra</span>
+              </button>
             </div>
 
-            <div className="prime-card overflow-hidden">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2.5 px-3">Nº Fatura</th>
-                    <th className="py-2.5 px-3">Data Emissão</th>
-                    <th className="py-2.5 px-3">Descrição / Parcela</th>
-                    <th className="py-2.5 px-3 text-right">Valor Total</th>
-                    <th className="py-2.5 px-3 text-right">Recebido</th>
-                    <th className="py-2.5 px-3 text-right">Pendente</th>
-                    <th className="py-2.5 px-3 text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {projectInvoices.map(inv => (
-                    <tr key={inv.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-700">{inv.code}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{inv.issueDate}</td>
-                      <td className="py-2.5 px-3 text-slate-800">{inv.description}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-900">€{inv.totalAmount.toLocaleString('pt-PT')}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-emerald-600">€{inv.receivedAmount.toLocaleString('pt-PT')}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-rose-600">€{(inv.totalAmount - inv.receivedAmount).toLocaleString('pt-PT')}</td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          inv.status === 'paga' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {inv.status.replace('_', ' ')}
-                        </span>
-                      </td>
+            {projectInvoices.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Nenhuma fatura lançada nesta obra</h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                    Lance adiantamentos, parcelas contratuais ou autos de medição diretamente associados a esta obra e ao cliente {client?.name || 'vinculado'}.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAddInvoiceModal(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Lançar Primeira Fatura</span>
+                </button>
+              </div>
+            ) : (
+              <div className="prime-card overflow-hidden">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Nº Fatura</th>
+                      <th className="py-2.5 px-3">Data Emissão</th>
+                      <th className="py-2.5 px-3">Descrição / Parcela</th>
+                      <th className="py-2.5 px-3 text-right">Valor Total</th>
+                      <th className="py-2.5 px-3 text-right">Recebido</th>
+                      <th className="py-2.5 px-3 text-right">Pendente</th>
+                      <th className="py-2.5 px-3 text-center">Estado</th>
+                      <th className="py-2.5 px-3 text-center">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {projectInvoices.map(inv => {
+                      const pending = inv.totalAmount - (inv.receivedAmount || 0);
+                      return (
+                        <tr key={inv.id} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-mono font-bold text-sky-700">{inv.code}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{inv.issueDate}</td>
+                          <td className="py-2.5 px-3 text-slate-800">
+                            <span className="font-semibold block">{inv.description}</span>
+                            {inv.stageOrMilestone && (
+                              <span className="text-[10px] text-slate-400">{inv.stageOrMilestone}</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-900">{formatCurrency(inv.totalAmount)}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{formatCurrency(inv.receivedAmount || 0)}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-rose-600">{formatCurrency(pending > 0 ? pending : 0)}</td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              inv.status === 'paga' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {inv.status.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {pending > 0 && (
+                                <button
+                                  onClick={() => handleOpenPaymentForInvoice(inv)}
+                                  className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded font-bold text-[10px] transition-colors cursor-pointer"
+                                  title="Registar recebimento desta fatura"
+                                >
+                                  Receber
+                                </button>
+                              )}
+                              {inv.documentUrl && (
+                                <a
+                                  href={inv.documentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={inv.documentName || `Fatura_${inv.code}.pdf`}
+                                  className="p-1 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded"
+                                  title={inv.documentName || 'Ver anexo'}
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -2016,12 +2279,21 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Gestor Responsável</label>
-                  <input
-                    type="text"
+                  <select
                     value={projectEditForm.managerId}
                     onChange={e => setProjectEditForm({ ...projectEditForm, managerId: e.target.value })}
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                  />
+                  >
+                    <option value="Alexandre Carvalho">Alexandre Carvalho (Gestor de Obra)</option>
+                    <option value="Rochele">Rochele (Gestão / Finanças)</option>
+                    <option value="Breno Ramos">Breno Ramos (Direção)</option>
+                    {employees.filter(e => !['Alexandre Carvalho', 'Rochele', 'Breno Ramos'].includes(e.name)).map(emp => (
+                      <option key={emp.id} value={emp.name}>{emp.name} ({emp.role})</option>
+                    ))}
+                    {projectEditForm.managerId && !['Alexandre Carvalho', 'Rochele', 'Breno Ramos'].includes(projectEditForm.managerId) && !employees.some(e => e.name === projectEditForm.managerId) && (
+                      <option value={projectEditForm.managerId}>{projectEditForm.managerId}</option>
+                    )}
+                  </select>
                 </div>
               </div>
 
@@ -2104,25 +2376,369 @@ export const ProjectDetail: React.FC<Props> = ({ projectId, onBack }) => {
                 />
               </div>
 
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditProjectModal(false);
+                    setShowDeleteModal(true);
+                  }}
+                  className="px-3 py-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Eliminar permanentemente esta obra"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar esta Obra...</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditProjectModal(false)}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer text-xs"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold shadow-xs cursor-pointer flex items-center gap-1.5 text-xs"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Guardar Alterações da Obra</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LANÇAR FATURA NESTA OBRA */}
+      {showAddInvoiceModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 border-b border-slate-200 bg-emerald-50/70 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Lançar Fatura nesta Obra</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">{project.id} - {project.title}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowAddInvoiceModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProjectInvoice} className="p-5 space-y-3.5 text-xs max-h-[85vh] overflow-y-auto">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                <div>
+                  <span className="text-slate-500 block text-[10px]">Cliente Faturado</span>
+                  <span className="font-bold text-slate-900">{client?.name || 'Cliente Vinculado'}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-500 block text-[10px]">Total Contrato</span>
+                  <span className="font-bold text-slate-900">{formatCurrency(project.contractValue || 0)}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Nº / Código da Fatura</label>
+                  <input
+                    type="text"
+                    placeholder={`FAT-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(3, '0')}`}
+                    value={invoiceForm.code}
+                    onChange={e => setInvoiceForm({ ...invoiceForm, code: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-sky-700"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Etapa / Parcela Referente</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 1ª Parcela, Início de Obra..."
+                    value={invoiceForm.stageOrMilestone}
+                    onChange={e => setInvoiceForm({ ...invoiceForm, stageOrMilestone: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Descrição / Conceito da Fatura *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Adiantamento de 50% Início de Obra e Compra de Materiais"
+                  value={invoiceForm.description}
+                  onChange={e => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Valor Total (€) *</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-2 text-slate-400 font-bold text-xs">€</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      placeholder="0,00"
+                      value={invoiceForm.totalAmount}
+                      onChange={e => setInvoiceForm({ ...invoiceForm, totalAmount: sanitizeCurrencyInput(e.target.value) })}
+                      className="w-full pl-7 pr-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Data Emissão</label>
+                  <input
+                    type="date"
+                    value={invoiceForm.issueDate}
+                    onChange={e => setInvoiceForm({ ...invoiceForm, issueDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Data Vencimento</label>
+                  <input
+                    type="date"
+                    value={invoiceForm.dueDate}
+                    onChange={e => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              {/* Upload de anexo / documento PDF ou foto */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Anexo / Comprovativo PDF ou Imagem (Opcional)</label>
+                <div className="border border-dashed border-slate-300 rounded-xl p-3 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                  {invoiceForm.documentName ? (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-700 truncate max-w-xs">{invoiceForm.documentName}</span>
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceForm({ ...invoiceForm, documentName: '', documentUrl: '' })}
+                        className="text-rose-500 hover:text-rose-700 text-[10px] font-bold cursor-pointer"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer block">
+                      <UploadCloud className="w-5 h-5 text-slate-400 mx-auto mb-1" />
+                      <span className="text-[11px] text-sky-600 font-semibold">Carregar ficheiro PDF ou foto da fatura</span>
+                      <input
+                        type="file"
+                        accept="application/pdf,image/*"
+                        className="hidden"
+                        onChange={handleInvoiceFileUpload}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Checkbox: Já recebida / paga */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={invoiceForm.markAsPaid}
+                    onChange={e => setInvoiceForm({ ...invoiceForm, markAsPaid: e.target.checked })}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span>Esta fatura já foi recebida / paga pelo cliente</span>
+                </label>
+
+                {invoiceForm.markAsPaid && (
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 animate-in fade-in duration-100">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Método de Recebimento</label>
+                      <select
+                        value={invoiceForm.paymentMethod}
+                        onChange={e => setInvoiceForm({ ...invoiceForm, paymentMethod: e.target.value as any })}
+                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                      >
+                        <option value="transferencia">Transferência Bancária</option>
+                        <option value="dinheiro">Dinheiro (Efectivo)</option>
+                        <option value="bizum">Bizum</option>
+                        <option value="cartao">Cartão de Crédito/Débito</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Conta / Banco Destino</label>
+                      <select
+                        value={invoiceForm.paymentBank}
+                        onChange={e => setInvoiceForm({ ...invoiceForm, paymentBank: e.target.value })}
+                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                      >
+                        <option value="CaixaBank">CaixaBank (Conta Principal)</option>
+                        <option value="BBVA">BBVA</option>
+                        <option value="Santander">Santander</option>
+                        <option value="Caixa Físico">Caixa Empresa (Efectivo)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Observações / Notas Internas</label>
+                <textarea
+                  rows={2}
+                  placeholder="Informações adicionais..."
+                  value={invoiceForm.notes}
+                  onChange={e => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+
               <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowEditProjectModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+                  onClick={() => setShowAddInvoiceModal(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Guardar Alterações da Obra</span>
+                  <span>Emitir Fatura nesta Obra</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL: REGISTAR RECEBIMENTO DE FATURA EXISTENTE */}
+      {selectedInvoiceForPayment && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 border-b border-slate-200 bg-emerald-50/70 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Registar Recebimento de Fatura</h3>
+                <p className="text-[11px] text-slate-500 font-mono">{selectedInvoiceForPayment.code} - {selectedInvoiceForPayment.description}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedInvoiceForPayment(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordInvoicePayment} className="p-5 space-y-3.5 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Valor Total da Fatura:</span>
+                  <span className="font-bold text-slate-900">{formatCurrency(selectedInvoiceForPayment.totalAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Já Recebido:</span>
+                  <span className="font-bold text-emerald-600">{formatCurrency(selectedInvoiceForPayment.receivedAmount || 0)}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-slate-200">
+                  <span className="font-bold text-slate-700">Pendente de Receber:</span>
+                  <span className="font-bold text-rose-600">{formatCurrency(selectedInvoiceForPayment.totalAmount - (selectedInvoiceForPayment.receivedAmount || 0))}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Valor a Receber Agora (€) *</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  value={paymentForm.amount}
+                  onChange={e => setPaymentForm({ ...paymentForm, amount: sanitizeCurrencyInput(e.target.value) })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-emerald-600 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Data Recebimento</label>
+                  <input
+                    type="date"
+                    value={paymentForm.date}
+                    onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Método</label>
+                  <select
+                    value={paymentForm.method}
+                    onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value as any })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  >
+                    <option value="transferencia">Transferência Bancária</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="bizum">Bizum</option>
+                    <option value="cartao">Cartão</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Conta / Banco Destino</label>
+                <select
+                  value={paymentForm.bank}
+                  onChange={e => setPaymentForm({ ...paymentForm, bank: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                >
+                  <option value="CaixaBank">CaixaBank</option>
+                  <option value="BBVA">BBVA</option>
+                  <option value="Santander">Santander</option>
+                  <option value="Caixa Físico">Caixa Empresa</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedInvoiceForPayment(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirmar Recebimento</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE ELIMINAÇÃO SEGURA DE OBRA */}
+      {showDeleteModal && (
+        <DeleteProjectModal
+          project={project}
+          client={client}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirmDelete={(pId) => {
+            deleteProject(pId);
+            setShowDeleteModal(false);
+            onBack();
+          }}
+        />
       )}
     </div>
   );

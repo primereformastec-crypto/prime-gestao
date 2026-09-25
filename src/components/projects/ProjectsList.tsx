@@ -5,17 +5,20 @@ import {
   Building2, Plus, Search, Filter, Calendar, MapPin, 
   User, CheckCircle2, Clock, AlertTriangle, TrendingUp, 
   LayoutGrid, List, KanbanSquare, ArrowRight, Percent,
-  Archive, RotateCcw, Award, Check
+  Archive, RotateCcw, Award, Check, Trash2
 } from 'lucide-react';
 import { formatCurrency, parseCurrencyInput, sanitizeCurrencyInput } from '../../utils/currency';
+import { DeleteProjectModal } from './DeleteProjectModal';
 
 export const ProjectsList: React.FC = () => {
   const { 
     projects, 
     clients, 
+    employees,
     getProjectFinancialSummary, 
     setSelectedProjectId, 
     addProject, 
+    deleteProject,
     archiveProject, 
     unarchiveProject 
   } = useApp();
@@ -26,6 +29,7 @@ export const ProjectsList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showNewModal, setShowNewModal] = useState(false);
   const [archiveModalProject, setArchiveModalProject] = useState<Project | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [archiveNotes, setArchiveNotes] = useState('');
 
   // Separar Ativas vs Arquivadas
@@ -66,7 +70,7 @@ export const ProjectsList: React.FC = () => {
     serviceType: 'Reforma integral',
     address: '',
     city: 'Barcelona',
-    managerId: 'Ricardo Silva',
+    managerId: 'Alexandre Carvalho',
     startDate: '2026-10-01',
     plannedEndDate: '2026-11-30',
     contractValue: '0',
@@ -302,20 +306,42 @@ export const ProjectsList: React.FC = () => {
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                       Concluída {project.archivedDate ? `em ${project.archivedDate}` : ''}
                     </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProjectToDelete(project);
+                        }}
+                        className="text-slate-300 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors"
+                        title="Eliminar obra"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          unarchiveProject(project.id);
+                        }}
+                        className="px-2 py-1 text-slate-600 hover:text-sky-700 hover:bg-sky-50 rounded font-medium flex items-center gap-1"
+                        title="Mover de volta para obras ativas"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Reativar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        unarchiveProject(project.id);
+                        setProjectToDelete(project);
                       }}
-                      className="px-2 py-1 text-slate-600 hover:text-sky-700 hover:bg-sky-50 rounded font-medium flex items-center gap-1"
-                      title="Mover de volta para obras ativas"
+                      className="text-slate-300 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors"
+                      title="Eliminar obra"
                     >
-                      <RotateCcw className="w-3 h-3" />
-                      Reativar
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                  </div>
-                ) : (
-                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-end text-xs">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -385,12 +411,21 @@ export const ProjectsList: React.FC = () => {
                         {formatCurrency(summary.marginAmount)} ({Math.round(summary.marginPercent)}%)
                       </td>
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => setSelectedProjectId(proj.id)}
-                          className="px-3 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold rounded-lg text-xs transition-colors"
-                        >
-                          Ver Central
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedProjectId(proj.id)}
+                            className="px-3 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold rounded-lg text-xs transition-colors"
+                          >
+                            Ver Central
+                          </button>
+                          <button
+                            onClick={() => setProjectToDelete(proj)}
+                            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Eliminar obra"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -500,7 +535,16 @@ export const ProjectsList: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    value={newProjectForm.city}
+                    onChange={e => setNewProjectForm({ ...newProjectForm, city: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  />
+                </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Morada da Obra</label>
                   <input
@@ -508,17 +552,23 @@ export const ProjectsList: React.FC = () => {
                     placeholder="Rua, número, andar"
                     value={newProjectForm.address}
                     onChange={e => setNewProjectForm({ ...newProjectForm, address: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Cidade</label>
-                  <input
-                    type="text"
-                    value={newProjectForm.city}
-                    onChange={e => setNewProjectForm({ ...newProjectForm, city: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  />
+                  <label className="block font-semibold text-slate-700 mb-1">Gestor de Obra</label>
+                  <select
+                    value={newProjectForm.managerId}
+                    onChange={e => setNewProjectForm({ ...newProjectForm, managerId: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium"
+                  >
+                    <option value="Alexandre Carvalho">Alexandre Carvalho (Gestor)</option>
+                    <option value="Rochele">Rochele (Gestão / Finanças)</option>
+                    <option value="Breno Ramos">Breno Ramos (Direção)</option>
+                    {employees.filter(e => !['Alexandre Carvalho', 'Rochele', 'Breno Ramos'].includes(e.name)).map(emp => (
+                      <option key={emp.id} value={emp.name}>{emp.name} ({emp.role})</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -645,6 +695,19 @@ export const ProjectsList: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE ELIMINAÇÃO SEGURA DE OBRA */}
+      {projectToDelete && (
+        <DeleteProjectModal
+          project={projectToDelete}
+          client={clients.find(c => c.id === projectToDelete.clientId)}
+          onClose={() => setProjectToDelete(null)}
+          onConfirmDelete={(projectId) => {
+            deleteProject(projectId);
+            setProjectToDelete(null);
+          }}
+        />
       )}
     </div>
   );

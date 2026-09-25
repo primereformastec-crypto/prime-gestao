@@ -53,21 +53,40 @@ const server = http.createServer((req, res) => {
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = urlObj.pathname;
 
+  // Helper para sanitizar caracteres e corrigir gestor padrão na nuvem/bd
+  function sanitizeBackendState(state) {
+    if (!state) return state;
+    if (Array.isArray(state.projects)) {
+      state.projects = state.projects.map(p => {
+        if (!p) return p;
+        let title = p.title || '';
+        title = title.replace(/Ã±/g, 'ñ').replace(/Ã§/g, 'ç').replace(/Ã¡/g, 'á').replace(/Ã©/g, 'é').replace(/Ã­/g, 'í').replace(/Ã³/g, 'ó').replace(/Ãº/g, 'ú').replace(/Ã£/g, 'ã').replace(/Ãµ/g, 'õ');
+        let managerId = p.managerId;
+        if (!managerId || managerId === 'Ricardo Silva') {
+          managerId = 'Alexandre Carvalho';
+        }
+        return { ...p, title, managerId };
+      });
+    }
+    return state;
+  }
+
   // API ROUTE: GET /api/state
   if (pathname === '/api/state' && req.method === 'GET') {
     res.setHeader('Content-Type', 'application/json');
     fetchStateFromSupabase().then(cloudData => {
       if (cloudData && cloudData.isInitialized) {
-        saveDatabaseState(cloudData, false);
+        const sanitized = sanitizeBackendState(cloudData);
+        saveDatabaseState(sanitized, false);
         res.statusCode = 200;
-        res.end(JSON.stringify(cloudData));
+        res.end(JSON.stringify(sanitized));
         return;
       }
-      const data = getDatabaseState();
+      const data = sanitizeBackendState(getDatabaseState());
       res.statusCode = 200;
       res.end(JSON.stringify(data || { isInitialized: false }));
     }).catch(() => {
-      const data = getDatabaseState();
+      const data = sanitizeBackendState(getDatabaseState());
       res.statusCode = 200;
       res.end(JSON.stringify(data || { isInitialized: false }));
     });
@@ -113,6 +132,11 @@ const server = http.createServer((req, res) => {
         // Se for cliente e foi solicitado eliminar obras vinculadas
         if (entityType === 'clients' && deleteAssociatedProjects && Array.isArray(currentState.projects)) {
           currentState.projects = currentState.projects.filter(p => p && p.clientId !== id);
+        }
+
+        // Se for obra, também remove etapas vinculadas
+        if (entityType === 'projects' && Array.isArray(currentState.stages)) {
+          currentState.stages = currentState.stages.filter(s => s && s.projectId !== id);
         }
 
         // Mantém histórico dos IDs eliminados para prevenir ressurreição em merges de outros dispositivos

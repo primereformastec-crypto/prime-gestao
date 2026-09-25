@@ -13,6 +13,7 @@ import {
   INITIAL_DAILY_LOGS, INITIAL_PHOTOS, INITIAL_DOCUMENTS, INITIAL_LEADS,
   INITIAL_QUOTES, INITIAL_NOTIFICATIONS, INITIAL_AUDIT_LOGS, INITIAL_FIXED_EXPENSES
 } from '../data/mockData';
+import { fixMojibake } from '../utils/textCleaner';
 
 interface AppContextType {
   currentUser: User;
@@ -71,6 +72,7 @@ interface AppContextType {
       serviceType?: string; 
       contractValue?: number;
       notes?: string;
+      managerId?: string;
     }
   ) => { client: Client; project: Project };
 
@@ -224,7 +226,7 @@ export const DEFAULT_RESTORED_PROJECTS: Project[] = [
     serviceType: 'Reforma integral',
     address: 'Font Rica, 24bis A',
     city: 'Sant Cugat, Barcelona',
-    managerId: 'usr-1',
+    managerId: 'Alexandre Carvalho',
     startDate: '2026-10-01',
     plannedEndDate: '2026-10-30',
     contractValue: 25388,
@@ -324,6 +326,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return DEFAULT_RESTORED_CLIENTS.filter(c => !delSet.has(c.id));
   });
+  const sanitizeProjectData = (p: Project): Project => ({
+    ...p,
+    title: fixMojibake(p.title),
+    serviceType: fixMojibake(p.serviceType),
+    address: fixMojibake(p.address),
+    city: fixMojibake(p.city),
+    managerId: (!p.managerId || p.managerId === 'Ricardo Silva') ? 'Alexandre Carvalho' : p.managerId
+  });
+
   const [projects, setProjects] = useState<Project[]>(() => {
     const loaded = sanitizeStorageArray<Project>('prime_projects');
     let delSet = new Set<string>();
@@ -333,9 +344,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
 
     if (loaded && loaded.length > 0) {
-      return loaded.filter(p => !delSet.has(p.id));
+      return loaded.filter(p => !delSet.has(p.id)).map(sanitizeProjectData);
     }
-    return DEFAULT_RESTORED_PROJECTS.filter(p => !delSet.has(p.id));
+    return DEFAULT_RESTORED_PROJECTS.filter(p => !delSet.has(p.id)).map(sanitizeProjectData);
   });
   const [stages, setStages] = useState<ProjectStage[]>(() => sanitizeStorageArray<ProjectStage>('prime_stages'));
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -451,7 +462,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // PROTECTED SYNC: Never wipe projects with empty server arrays, respect deleted
           if (data.projects && data.projects.length > 0) {
             setProjects(prev => {
-              const activeRemote = data.projects.filter((p: Project) => !delSet.has(p.id));
+              const activeRemote = data.projects.filter((p: Project) => !delSet.has(p.id)).map(sanitizeProjectData);
               const existingIds = new Set(activeRemote.map((p: Project) => p.id));
               const missingFromRemote = prev.filter(p => !existingIds.has(p.id) && !delSet.has(p.id));
               return [...activeRemote, ...missingFromRemote];
@@ -889,6 +900,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       serviceType?: string; 
       contractValue?: number;
       notes?: string;
+      managerId?: string;
     }
   ) => {
     const lead = leads.find(l => l.id === leadId);
@@ -907,14 +919,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (!client) {
       const clientCount = clients.length + 1;
+      const cleanedLeadName = fixMojibake(lead.name);
+      const cleanedLeadAddress = fixMojibake(lead.address);
+      const cleanedCity = fixMojibake(effectiveCity);
+
       const clientId = `CLI-${String(clientCount).padStart(3, '0')}`;
       client = {
         id: clientId,
-        name: lead.name,
+        name: cleanedLeadName,
         phone: lead.phone,
         email: lead.email || '',
-        address: lead.address || effectiveCity,
-        city: effectiveCity,
+        address: cleanedLeadAddress || cleanedCity,
+        city: cleanedCity,
         createdAt: new Date().toISOString().slice(0, 10),
         notes: `Convertido do Lead ${lead.id} (Virou Obra)`,
         totalSpent: customOptions?.contractValue !== undefined ? customOptions.contractValue : (lead.finalValue || lead.estimatedValue || 0)
@@ -929,22 +945,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const projectValue = customOptions?.contractValue !== undefined 
       ? customOptions.contractValue 
       : (lead.finalValue || lead.estimatedValue || 0);
-    const serviceType = customOptions?.serviceType || lead.service || 'Reforma Geral';
+    const serviceType = fixMojibake(customOptions?.serviceType || lead.service || 'Reforma Geral');
     const status = customOptions?.status || 'em_execucao';
     const isCompleted = status === 'concluida';
     const progressPercent = isCompleted ? 100 : 0;
     
     const today = new Date().toISOString().slice(0, 10);
     const plannedEnd = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const cleanedLeadName = fixMojibake(lead.name);
+    const cleanedAddress = fixMojibake(lead.address) || fixMojibake(effectiveCity);
+    const cleanedCity = fixMojibake(effectiveCity);
 
     const project: Project = {
       id: projectId,
       clientId: client.id,
-      title: `${serviceType} - ${lead.name}`,
+      title: `${serviceType} - ${cleanedLeadName}`,
       serviceType,
-      address: lead.address || effectiveCity,
-      city: effectiveCity,
-      managerId: 'Ricardo Silva',
+      address: cleanedAddress,
+      city: cleanedCity,
+      managerId: customOptions?.managerId || (employees.length > 0 ? employees[0].name : 'Alexandre Carvalho'),
       startDate: today,
       plannedEndDate: plannedEnd,
       actualEndDate: isCompleted ? today : undefined,
