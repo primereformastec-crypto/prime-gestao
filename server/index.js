@@ -131,7 +131,17 @@ const server = http.createServer((req, res) => {
 
         // Se for cliente e foi solicitado eliminar obras vinculadas
         if (entityType === 'clients' && deleteAssociatedProjects && Array.isArray(currentState.projects)) {
+          const removedProjects = currentState.projects.filter(p => p && p.clientId === id);
+          const removedProjectIds = removedProjects.map(p => p.id);
           currentState.projects = currentState.projects.filter(p => p && p.clientId !== id);
+          
+          if (Array.isArray(currentState.stages)) {
+            currentState.stages = currentState.stages.filter(s => s && !removedProjectIds.includes(s.projectId));
+          }
+          if (!Array.isArray(currentState.deletedEntityIds)) currentState.deletedEntityIds = [];
+          removedProjectIds.forEach(pId => {
+            if (!currentState.deletedEntityIds.includes(pId)) currentState.deletedEntityIds.push(pId);
+          });
         }
 
         // Se for obra, também remove etapas vinculadas
