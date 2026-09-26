@@ -93,7 +93,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Helper for non-destructive collection merging across devices (respects deleted IDs)
+  // Helper to extract the most accurate timestamp for conflict-free multi-device merge
+  function getEntityTimestamp(entity) {
+    if (!entity) return 0;
+    if (entity.updatedAt) {
+      const t = new Date(entity.updatedAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    if (Array.isArray(entity.timeline) && entity.timeline.length > 0) {
+      const dates = entity.timeline.map(t => {
+        if (t && t.id && String(t.id).startsWith('tl-')) {
+          const num = parseInt(String(t.id).replace('tl-', ''), 10);
+          if (!isNaN(num) && num > 0) return num;
+        }
+        if (t && t.date) {
+          const d = new Date(t.date).getTime();
+          if (!isNaN(d) && d > 0) return d;
+        }
+        return 0;
+      });
+      const maxD = Math.max(...dates);
+      if (maxD > 0) return maxD;
+    }
+    if (entity.createdAt) {
+      const t = new Date(entity.createdAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    if (entity.dateAdded) {
+      const t = new Date(entity.dateAdded).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    return 0;
+  }
+
+  // Helper for non-destructive collection merging across devices (respects deleted IDs & timestamps)
   function mergeCollectionsById(existing = [], incoming = [], deletedIds = new Set()) {
     if (!incoming || !Array.isArray(incoming)) incoming = [];
     if (!existing || !Array.isArray(existing)) existing = [];
@@ -105,7 +138,19 @@ const server = http.createServer((req, res) => {
     incoming.forEach(item => {
       if (item && item.id && !deletedIds.has(item.id)) {
         const prev = map.get(item.id);
-        map.set(item.id, prev ? { ...prev, ...item } : item);
+        if (!prev) {
+          map.set(item.id, item);
+        } else {
+          const prevTime = getEntityTimestamp(prev);
+          const incomingTime = getEntityTimestamp(item);
+          // Only overwrite if incoming is equal or newer than the server's version
+          if (incomingTime >= prevTime) {
+            map.set(item.id, { ...prev, ...item });
+          } else {
+            // Protect server's newer state from stale device overwrites
+            map.set(item.id, prev);
+          }
+        }
       }
     });
     return Array.from(map.values());
@@ -212,6 +257,62 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'JSON inválido' }));
+      }
+    });
+    return;
+  }
+
+  // API ROUTE: POST /api/lead/status (Atualização imediata de status no pipeline)
+  if (pathname === '/api/lead/status' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { leadId, status, updatedAt, interaction } = JSON.parse(body || '{}');
+        if (!leadId || !status) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'leadId e status são obrigatórios' }));
+          return;
+        }
+
+        const currentState = getDatabaseState() || {};
+        if (!Array.isArray(currentState.leads)) currentState.leads = [];
+
+        let found = false;
+        currentState.leads = currentState.leads.map(lead => {
+          if (lead && lead.id === leadId) {
+            found = true;
+            const updatedTimeline = interaction 
+              ? [interaction, ...(Array.isArray(lead.timeline) ? lead.timeline : [])]
+              : (Array.isArray(lead.timeline) ? lead.timeline : []);
+            return {
+              ...lead,
+              status,
+              updatedAt: updatedAt || new Date().toISOString(),
+              timeline: updatedTimeline
+            };
+          }
+          return lead;
+        });
+
+        if (!found) {
+          res.statusCode = 404;
+          res.end(JSON.stringify({ error: 'Lead não encontrado no servidor' }));
+          return;
+        }
+
+        currentState.lastUpdated = new Date().toISOString();
+        saveDatabaseState(currentState, false);
+        saveStateToSupabase(currentState).catch(err => {
+          console.warn('[Supabase Lead Status Sync Warn]:', err);
+        });
+
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        res.end(JSON.stringify({ success: true, leadId, status, updatedAt }));
+      } catch (err) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
       }
     });
     return;

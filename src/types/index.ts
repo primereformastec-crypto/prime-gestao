@@ -65,6 +65,7 @@ export interface Lead {
   campaignName?: string;
   adName?: string;
   rawMetaFields?: Record<string, any>;
+  updatedAt?: string; // ISO timestamp for conflict-free multi-device synchronization
 }
 
 // ===================== CLIENTES =====================
@@ -79,6 +80,7 @@ export interface Client {
   postalCode?: string;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
   totalSpent?: number;
 }
 
@@ -107,6 +109,7 @@ export interface Project {
   progressPercent: number;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
   isArchived?: boolean;
   archivedDate?: string;
   archivedNotes?: string;

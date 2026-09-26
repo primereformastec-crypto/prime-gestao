@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { 
   User, UserRole, Lead, LeadStatus, Client, Project, ProjectStatus, 
   ProjectStage, StageStatus, Employee, EmployeeShift, ShiftStatus, 
@@ -14,6 +14,7 @@ import {
   INITIAL_QUOTES, INITIAL_NOTIFICATIONS, INITIAL_AUDIT_LOGS, INITIAL_FIXED_EXPENSES
 } from '../data/mockData';
 import { fixMojibake } from '../utils/textCleaner';
+import { getEntityTimestamp } from '../utils/entitySync';
 
 interface AppContextType {
   currentUser: User;
@@ -377,6 +378,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
+  // Track recent local entity edits to guarantee that background polling NEVER rolls back active user moves
+  const localEditGraceMap = useRef<Map<string, number>>(new Map());
+
   // Sync to local storage on changes
   useEffect(() => {
     localStorage.setItem('prime_leads', JSON.stringify(leads));
@@ -434,7 +438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('prime_audit_logs', JSON.stringify(auditLogs));
   }, [auditLogs]);
 
-  // Load from Central Server Database on mount
+  // Load from Central Server Database on mount (conflict-free merge)
   useEffect(() => {
     fetch('/api/state')
       .then(res => res.json())
@@ -447,25 +451,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           const delSet = new Set([...deletedEntityIds, ...(data.deletedEntityIds || [])]);
 
-          if (data.leads && data.leads.length > 0) setLeads(data.leads.filter((l: Lead) => !delSet.has(l.id)));
+          // PROTECTED SYNC FOR LEADS: Never wipe newer local edits with stale server data
+          if (data.leads && data.leads.length > 0) {
+            setLeads(prev => {
+              const activeRemote: Lead[] = data.leads.filter((l: Lead) => !delSet.has(l.id));
+              const remoteMap = new Map<string, Lead>(activeRemote.map(l => [l.id, l]));
+              const merged: Lead[] = prev.filter(l => !delSet.has(l.id)).map(local => {
+                const remote = remoteMap.get(local.id);
+                if (!remote) return local;
+                remoteMap.delete(local.id);
+                const localTime = getEntityTimestamp(local);
+                const remoteTime = getEntityTimestamp(remote);
+                return localTime >= remoteTime ? local : remote;
+              });
+              return [...merged, ...Array.from(remoteMap.values())];
+            });
+          }
 
           // PROTECTED SYNC: Never wipe clients with empty server arrays, respect deleted
           if (data.clients && data.clients.length > 0) {
             setClients(prev => {
-              const activeRemote = data.clients.filter((c: Client) => !delSet.has(c.id));
-              const existingIds = new Set(activeRemote.map((c: Client) => c.id));
-              const missingFromRemote = prev.filter(c => !existingIds.has(c.id) && !delSet.has(c.id));
-              return [...activeRemote, ...missingFromRemote];
+              const activeRemote: Client[] = data.clients.filter((c: Client) => !delSet.has(c.id));
+              const remoteMap = new Map<string, Client>(activeRemote.map(c => [c.id, c]));
+              const merged: Client[] = prev.filter(c => !delSet.has(c.id)).map(local => {
+                const remote = remoteMap.get(local.id);
+                if (!remote) return local;
+                remoteMap.delete(local.id);
+                const localTime = getEntityTimestamp(local);
+                const remoteTime = getEntityTimestamp(remote);
+                return localTime >= remoteTime ? local : remote;
+              });
+              return [...merged, ...Array.from(remoteMap.values())];
             });
           }
 
           // PROTECTED SYNC: Never wipe projects with empty server arrays, respect deleted
           if (data.projects && data.projects.length > 0) {
             setProjects(prev => {
-              const activeRemote = data.projects.filter((p: Project) => !delSet.has(p.id)).map(sanitizeProjectData);
-              const existingIds = new Set(activeRemote.map((p: Project) => p.id));
-              const missingFromRemote = prev.filter(p => !existingIds.has(p.id) && !delSet.has(p.id));
-              return [...activeRemote, ...missingFromRemote];
+              const activeRemote: Project[] = data.projects.filter((p: Project) => !delSet.has(p.id)).map(sanitizeProjectData);
+              const remoteMap = new Map<string, Project>(activeRemote.map(p => [p.id, p]));
+              const merged: Project[] = prev.filter(p => !delSet.has(p.id)).map(local => {
+                const remote = remoteMap.get(local.id);
+                if (!remote) return local;
+                remoteMap.delete(local.id);
+                const localTime = getEntityTimestamp(local);
+                const remoteTime = getEntityTimestamp(remote);
+                return localTime >= remoteTime ? local : remote;
+              });
+              return [...merged, ...Array.from(remoteMap.values())];
             });
           }
 
@@ -526,7 +559,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     changeOrders, dailyLogs, photos, documents, deletedEntityIds
   ]);
 
-  // Periodic background refresh from central server so team members automatically see each other's registered clients, works, and leads
+  // Periodic background refresh from central server with strict grace period and timestamp conflict resolution
   useEffect(() => {
     const interval = setInterval(() => {
       fetch('/api/state')
@@ -534,6 +567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .then(data => {
           if (data && data.isInitialized) {
             const delSet = new Set([...deletedEntityIds, ...(data.deletedEntityIds || [])]);
+            const now = Date.now();
 
             if (data.clients && data.clients.length > 0) {
               setClients(prev => {
@@ -563,23 +597,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               });
             }
 
+            // CRITICAL FIX: Conflict-free merge for leads preventing rollback of pipeline cards
             if (data.leads && data.leads.length > 0) {
               setLeads(prev => {
-                const existingMap = new Map(prev.map(l => [l.id, l]));
+                const existingMap = new Map(prev.filter(l => !delSet.has(l.id)).map(l => [l.id, l]));
                 let changed = false;
+
                 data.leads.forEach((rl: Lead) => {
+                  if (delSet.has(rl.id)) return;
                   const local = existingMap.get(rl.id);
                   if (!local) {
                     existingMap.set(rl.id, rl);
                     changed = true;
-                  } else if (
-                    local.status !== rl.status || 
-                    local.estimatedValue !== rl.estimatedValue || 
-                    local.finalValue !== rl.finalValue ||
-                    local.notes !== rl.notes
-                  ) {
-                    existingMap.set(rl.id, { ...local, ...rl });
-                    changed = true;
+                  } else {
+                    // Check local grace window: if user moved or edited this lead recently, NEVER overwrite with server!
+                    const lastLocalEdit = localEditGraceMap.current.get(local.id) || 0;
+                    const inGracePeriod = now - lastLocalEdit < 45000; // 45 seconds shield
+
+                    if (!inGracePeriod) {
+                      const localTime = getEntityTimestamp(local);
+                      const remoteTime = getEntityTimestamp(rl);
+
+                      // Only update if server's lead is strictly newer than our local lead
+                      if (remoteTime > localTime) {
+                        const hasDiff = 
+                          local.status !== rl.status || 
+                          local.estimatedValue !== rl.estimatedValue || 
+                          local.finalValue !== rl.finalValue ||
+                          local.notes !== rl.notes ||
+                          local.service !== rl.service ||
+                          local.city !== rl.city ||
+                          local.name !== rl.name ||
+                          local.phone !== rl.phone;
+
+                        if (hasDiff) {
+                          existingMap.set(rl.id, rl);
+                          changed = true;
+                        }
+                      }
+                    }
                   }
                 });
                 return changed ? Array.from(existingMap.values()) : prev;
@@ -787,13 +843,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addLead = (leadData: Omit<Lead, 'id' | 'timeline'>): Lead => {
     const nextNum = leads.length + 1;
     const id = `LEAD-${String(nextNum).padStart(4, '0')}`;
+    const nowIso = new Date().toISOString();
+    localEditGraceMap.current.set(id, Date.now());
+
     const newLead: Lead = {
       ...leadData,
       id,
+      updatedAt: nowIso,
       timeline: [
         {
           id: `tl-${Date.now()}`,
-          date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          date: nowIso.replace('T', ' ').slice(0, 16),
           type: 'nota',
           description: `Lead criado por ${currentUser.name}`,
           author: currentUser.name
@@ -814,15 +874,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const importBatchLeads = (newLeadsData: Omit<Lead, 'id' | 'timeline'>[]) => {
     let currentCount = leads.length;
+    const nowIso = new Date().toISOString();
     const createdLeads: Lead[] = newLeadsData.map((data, idx) => {
       const id = `LEAD-${String(currentCount + idx + 1).padStart(4, '0')}`;
+      localEditGraceMap.current.set(id, Date.now());
       return {
         ...data,
         id,
+        updatedAt: nowIso,
         timeline: [
           {
             id: `tl-${Date.now()}-${idx}`,
-            date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+            date: nowIso.replace('T', ' ').slice(0, 16),
             type: 'status_change',
             description: `Importado de lote Meta Ads (${data.campaignName || 'Meta Ads'})`,
             author: currentUser.name
@@ -844,20 +907,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteLead = (id: string) => {
+    setDeletedEntityIds(prev => {
+      const updated = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem('prime_deleted_ids', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     setLeads(prev => prev.filter(l => l.id !== id));
     logAudit('lead', id, 'Exclusão de Lead', `Lead ${id} removido.`);
+
+    fetch('/api/delete-entity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: 'leads', id })
+    }).catch(err => console.warn('[DeleteLead Sync Error]:', err));
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+    const nowIso = new Date().toISOString();
+    localEditGraceMap.current.set(id, Date.now());
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates, updatedAt: nowIso } : l));
   };
 
   const moveLeadStatus = (leadId: string, newStatus: LeadStatus) => {
+    const nowIso = new Date().toISOString();
+    localEditGraceMap.current.set(leadId, Date.now());
+
+    let updatedInteraction: any = null;
+
     setLeads(prev => prev.map(lead => {
       if (lead.id === leadId) {
-        const interaction: any = {
+        updatedInteraction = {
           id: `tl-${Date.now()}`,
-          date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          date: nowIso.replace('T', ' ').slice(0, 16),
           type: 'status_change',
           description: `Status alterado para: ${newStatus.replace('_', ' ').toUpperCase()}`,
           author: currentUser.name
@@ -865,28 +948,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return {
           ...lead,
           status: newStatus,
-          timeline: [interaction, ...lead.timeline]
+          updatedAt: nowIso,
+          timeline: [updatedInteraction, ...(lead.timeline || [])]
         };
       }
       return lead;
     }));
     logAudit('lead', leadId, 'Mudança de Status', `Lead movido para ${newStatus}`);
+
+    // Fast-path immediate sync to server to prevent network/polling race conditions across multiple team sessions
+    fetch('/api/lead/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        leadId,
+        status: newStatus,
+        updatedAt: nowIso,
+        interaction: updatedInteraction
+      })
+    }).catch(err => console.warn('[Fast Lead Move Sync Warn]:', err));
   };
 
   const addLeadInteraction = (leadId: string, type: any, description: string) => {
+    const nowIso = new Date().toISOString();
+    localEditGraceMap.current.set(leadId, Date.now());
     setLeads(prev => prev.map(lead => {
       if (lead.id === leadId) {
         const interaction: any = {
           id: `tl-${Date.now()}`,
-          date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          date: nowIso.replace('T', ' ').slice(0, 16),
           type,
           description,
           author: currentUser.name
         };
         return {
           ...lead,
-          lastContactDate: new Date().toISOString().slice(0, 10),
-          timeline: [interaction, ...lead.timeline]
+          lastContactDate: nowIso.slice(0, 10),
+          updatedAt: nowIso,
+          timeline: [interaction, ...(lead.timeline || [])]
         };
       }
       return lead;
